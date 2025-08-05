@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+  
+  backend:
+    build: .
+    command: >
+      sh -c "python3 manage.py collectstatic --noinput &&
+             python3 manage.py migrate &&
+             python3 manage.py runserver 0.0.0.0:5051"
+    volumes:
+      - .:/hrms
+      - static:/hrms/static/
+      - media:/hrms/media/media/
+    environment:
+      - DJANGO_DEBUG=False
+    ports:
+      - "5051:5051"
+    restart: unless-stopped
+    networks:
+      - pbz-network
+
+volumes:
+  static: {}
+  media: {}
+networks:
+  pbz-network:
+    external:
+      name: network

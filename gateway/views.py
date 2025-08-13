@@ -32,6 +32,7 @@ from payroll.models import StaffSalary
 from leave.serializers import *
 from gateway.serializers import *
 from gateway.models import *
+from kpi.models import *
 
 
 #====================================================== staff====================================================
@@ -155,6 +156,33 @@ class GenerateEmployeeData(APIView):
             print(f"Staff ID {staff.id}: saved (new ID: {new_record.id})")
 
         return Response({"message": f"Successfully processed staff records. New records: {saved_count}"}, status=status.HTTP_200_OK)
+
+
+#====================================================== kpi ====================================================
+class kpiSearch(django_filters.FilterSet):
+
+    class Meta:
+        model = Kpi
+        fields = {
+            'code' : ['exact', 'icontains'], 
+            'name' : ['exact', 'icontains'], 
+            'year' : ['exact'],
+            'department__id' : ['exact'],
+            'branch__id' : ['exact'],
+            'level__id' : ['exact'],
+            'is_active' : ['exact']
+        }
+
+
+class KPIList(ListAPIView):
+    queryset = Kpi.objects.all()
+    serializer_class = KpiSerializerExport
+    pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
+    filter_backends = [django_filters.rest_framework.DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = kpiSearch
+    search_fields = ['code','name', 'year']
+    ordering_fields = ['id','code','name']
+    ordering = ['-id']
 
 
 

@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-
+from decouple import config
 from pathlib import Path
 import os
 
@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'leave',
     'payroll',
     'training',
+    'kpi',
     'report',
 ]
 
@@ -129,34 +130,16 @@ SWAGGER_SETTINGS = {
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'pbz_hrms',
-#         'USER': 'niche',
-#         'PASSWORD': 'poochai13',
-#         'HOST':'localhost',
-#         'PORT':'5432',
-#     },
-# }
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'pbzhrms',
-        'USER': 'admin',
-        'PASSWORD': 'pbzadmin',
-        'HOST':'192.168.101.150',
-        'PORT':'5431',
+        'NAME': config('DATABASE_NAME'),
+        'USER': config('DATABASE_USER'),
+        'PASSWORD': config('DATABASE_PASSWORD'),
+        'HOST': config('DATABASE_HOST'),
+        'PORT': config('DATABASE_PORT'),
     },
-    # 'legacy': {
-    #     'ENGINE': 'django.db.backends.postgresql',
-    #     'NAME': 'ubx',
-    #     'USER': 'admin',
-    #     'PASSWORD': 'admin@ubx',
-    #     'HOST': '192.168.101.46',
-    #     'PORT': '5430',
-    # },
 }
 
 

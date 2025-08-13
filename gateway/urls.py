@@ -62,6 +62,8 @@ urlpatterns = [
 
 	path('bot-employee', GenerateEmployeeData.as_view()),
 
+	path('kpi/list', KPIList.as_view()),
+
 ]+static(settings.MEDIA_URL,document_root=settings.MEDIA_ROOT)
 
 

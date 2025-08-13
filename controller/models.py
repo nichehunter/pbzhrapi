@@ -151,6 +151,7 @@ class StaffDepartment(models.Model):
     department = models.ForeignKey(Department, on_delete = models.RESTRICT)
     staff = models.ForeignKey(Staff, on_delete = models.RESTRICT, related_name="staff_department")
     title = models.ForeignKey(DictionaryItem, on_delete = models.RESTRICT, null=True, blank=True)
+    position = models.ForeignKey(DictionaryItem, on_delete = models.RESTRICT, null=True, blank=True, related_name="position")
     is_active = models.BooleanField(default=True)
     removed_at = models.DateField(null=True)
     recorded_by = models.PositiveIntegerField(null=False)

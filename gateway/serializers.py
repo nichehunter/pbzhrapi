@@ -3,6 +3,7 @@ import json
 import datetime
 from controller.models import *
 from dictionary.models import DictionaryItem
+from kpi.models import *
 
 
 #================================================ export ===============================================
@@ -31,9 +32,10 @@ class StaffDepartmentSerializer(serializers.ModelSerializer):
     branch = BranchExportSerializer(read_only=True)
     department = DepartmentExportSerializer(read_only=True)
     title = DictionaryItemSerializerExport(read_only=True)
+    position = DictionaryItemSerializerExport(read_only=True)
     class Meta:
         model = StaffDepartment
-        fields = ['branch', 'department', 'title', 'is_active']
+        fields = ['branch', 'department', 'title', 'position', 'is_active']
 
 
 
@@ -51,3 +53,10 @@ class StaffDataSerializer(serializers.ModelSerializer):
     def get_active_departments(self, obj):
         active_departments = obj.staff_department.filter(is_active=True)
         return StaffDepartmentSerializer(active_departments, many=True).data
+
+#================================================ kpi ===============================================
+class KpiSerializerExport(serializers.ModelSerializer):
+    class Meta:
+        model = Kpi
+        fields = ('__all__')
+        read_only_fields = ('id',)

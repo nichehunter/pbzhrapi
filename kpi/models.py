@@ -54,6 +54,7 @@ class KeyResult(models.Model):
     weighting_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0) 
     is_active = models.BooleanField(default=True)
     section = models.ForeignKey(Section, on_delete = models.RESTRICT, related_name="result")
+    kpi = models.ForeignKey(Kpi, on_delete = models.RESTRICT, related_name="kpiresult")
     recorded_by = models.PositiveIntegerField(null=False)
     recorded_at = models.DateTimeField(auto_now_add = True, null=True)
 
@@ -72,6 +73,7 @@ class Performance(models.Model):
     weighting = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
     result = models.ForeignKey(KeyResult, on_delete = models.RESTRICT, related_name="performance")
+    kpi = models.ForeignKey(Kpi, on_delete = models.RESTRICT, related_name="kpiperfomance")
     recorded_by = models.PositiveIntegerField(null=False)
     recorded_at = models.DateTimeField(auto_now_add = True, null=True)
 

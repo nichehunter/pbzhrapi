@@ -185,4 +185,53 @@ class KPIList(ListAPIView):
     ordering = ['-id']
 
 
+class KPIActiveDetails(APIView):
+    def get(self, request, pk, *args, **kwargs):
+        try:
+            instance = Kpi.objects.get(id=pk)
+        except Kpi.DoesNotExist:
+            return Response({'error': 'KPI not found'},status=status.HTTP_404_NOT_FOUND)
+
+        serializer = KpiListSerializerExport(instance)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+
+
+class KPINotActiveDetails(APIView):
+    def get(self, request, *args, **kwargs):
+        kpi_id = request.query_params.get("kpi_id")
+        staff_id = request.query_params.get("staff_id")
+
+        if not kpi_id or not staff_id:
+            return Response({}, status=status.HTTP_200_OK)
+
+        # Check if there is at least one StaffKPI for this KPI and staff
+        if not StaffKPI.objects.filter(kpi_id=kpi_id, staff_id=staff_id).exists():
+            return Response([], status=status.HTTP_200_OK)
+
+        # Only get the KPI if matching StaffKPI exists
+        try:
+            kpi_instance = Kpi.objects.get(id=kpi_id)
+        except Kpi.DoesNotExist:
+            return Response({}, status=status.HTTP_200_OK)
+
+        serializer = StaffKpiListSerializerExport(
+            kpi_instance,
+            context={"staff_id": staff_id, "kpi_id": kpi_instance.id}
+        )
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+class StaffKPIRegister(CreateAPIView):
+
+    serializer_class = StaffKPISerializerRegister
+
+    def post(self, request, *args, **kwargs):
+        serializer = StaffKPISerializerRegister(data=request.data, many=True)
+        if serializer.is_valid():            
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 

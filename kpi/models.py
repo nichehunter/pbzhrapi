@@ -87,7 +87,7 @@ class StaffKPI(models.Model):
     staff = models.ForeignKey(Staff, on_delete = models.RESTRICT, related_name="staffkpi")
     perfomance = models.ForeignKey(Performance, on_delete = models.RESTRICT)
     kpi = models.ForeignKey(Kpi, on_delete = models.RESTRICT)
-    actual = models.TextField()
+    actual = models.DecimalField(max_digits=10, decimal_places=1, default=0)
     rating = models.DecimalField(max_digits=10, decimal_places=1, default=0)
     weighting_rating = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)

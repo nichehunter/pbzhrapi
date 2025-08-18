@@ -33,6 +33,7 @@ urlpatterns = [
     path('dictionary/api/', include('dictionary.urls')),
     path('controller/api/', include('controller.urls')),
     path('leave/api/', include('leave.urls')),
+    path('kpi/api/', include('kpi.urls')),
     path('payroll/api/', include('payroll.urls')),
     path('training/api/', include('training.urls')),
     path('gateway/api/', include('gateway.urls')),

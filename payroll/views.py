@@ -647,7 +647,9 @@ class GeneratePayroll(APIView):
             staff_allowances1 = MonthlyAllowance.objects.filter(staff=staff, is_active=True)
             staff_deductions1 = MonthlyDeduction.objects.filter(staff=staff, is_active=True)
             staff_funds = StaffSecurityFund.objects.filter(staff=staff, is_active=True)
+            staff_helths = HelthDeduction.objects.filter(is_active=True)
             paye_ranges = PayeeDeduction.objects.filter(is_active=True)
+            helth_fund = PayeeDeduction.objects.filter(is_active=True)
 
             payrollData = {}
 
@@ -679,6 +681,10 @@ class GeneratePayroll(APIView):
                 else:
                     variable_values['deduction'] = float(sum(deduction.amount for deduction in staff_deductions1))
                     payrollData['deduction'] = float(sum(deduction.amount for deduction in staff_deductions1))
+
+                if staff_helths:
+                    helth = HelthDeduction.objects.get(is_active=True)
+                    variable_values['helth_percentage'] = float(helth.percentage)
                 
                 if staff_funds:
                     staff_fund = StaffSecurityFund.objects.get(staff=staff, is_active=True)
@@ -694,7 +700,8 @@ class GeneratePayroll(APIView):
                 if fr.code in payrollData:
                     gross = payrollData['gross_salary']
                     security = payrollData['security_fund']
-                    paye_range = self.find_applicable_paye_range(gross - security, paye_ranges)
+                    helth = payrollData['helth_fund']
+                    paye_range = self.find_applicable_paye_range((gross - (security - helth)), paye_ranges)
                     variable_values['payee_lower_range'] = float(paye_range['lower_range'])
                     variable_values['payee_percentage'] = float(paye_range['range_percentage'])
                     variable_values['payee_initial_amount'] = float(paye_range['initia_amount'])

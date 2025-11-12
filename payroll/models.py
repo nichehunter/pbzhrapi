@@ -173,8 +173,24 @@ class SecurityFundDeduction(models.Model):
         return self.code
     
     class Meta:
-        verbose_name = "Payee Deduction"
-        verbose_name_plural = "Payee Deductions"
+        verbose_name = "Security Deduction"
+        verbose_name_plural = "Security Deductions"
+
+
+class HelthDeduction(models.Model):
+    code = NameField(max_length=50, blank=True, null=True)
+    deduction = models.ForeignKey(Deduction, on_delete = models.RESTRICT)
+    percentage =  models.FloatField(default=0)
+    is_active = models.BooleanField(default=True)
+    recorded_by = models.PositiveIntegerField(null=False)
+    recorded_at = models.DateTimeField(auto_now_add = True, null=True)
+
+    def __str__(self):
+        return self.code
+    
+    class Meta:
+        verbose_name = "Helth Deduction"
+        verbose_name_plural = "Helth Deductions"
 
 
 #============================================= monthly allowance ==============================================================
@@ -271,6 +287,7 @@ class StaffPayroll(models.Model):
     total_deduction = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
     payee =  models.DecimalField(max_digits=1000, decimal_places=2, default=0)
     security_fund =  models.DecimalField(max_digits=1000, decimal_places=2, default=0)
+    helth_fund =  models.DecimalField(max_digits=1000, decimal_places=2, default=0)
     net_salary = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
     month = models.PositiveIntegerField(default=datetime.date.today().month)
     year = models.PositiveIntegerField(default=datetime.date.today().year)
@@ -284,10 +301,6 @@ class StaffPayroll(models.Model):
         unique_together = ('staff', 'month', 'year')
         verbose_name = "Staff Payroll"
         verbose_name_plural = "Staff Payrolls"
-
-
-
-
 
 class PayrollVariable(models.Model):
     code = models.CharField(max_length=50)

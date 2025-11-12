@@ -1,11 +1,11 @@
-version: "3"
+
 
 services:
   
   backend:
     build: .
     command: >
-      sh -c "python3 manage.py collectstatic --noinput &&
+      sh -c "python3 manage.py collectstatic --noinput --clear &&
              python3 manage.py migrate &&
              python3 manage.py runserver 0.0.0.0:5051"
     volumes:
@@ -25,5 +25,4 @@ volumes:
   media: {}
 networks:
   pbz-network:
-    external:
-      name: network
+    external: true

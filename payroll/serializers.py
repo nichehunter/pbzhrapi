@@ -39,6 +39,15 @@ class OrganizationExportSerializer(serializers.ModelSerializer):
         fields = ('id','name','account')
         read_only_fields = ('id',)
 
+
+#================================================ formula ===============================================
+class CalculationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CalculationDay
+        fields = ('__all__')
+        read_only_fields = ('id',)
+
+
 #================================================ salary ===============================================
 class SalarySerializer(serializers.ModelSerializer):
     class Meta:

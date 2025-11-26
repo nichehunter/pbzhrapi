@@ -10,6 +10,23 @@ class NameField(models.CharField):
     def get_prep_value(self, value):
         return str(value).lower()
 
+
+#============================================= calculation ==============================================================
+class CalculationDay(models.Model):
+    code = NameField(max_length=50, blank=True, null=True)
+    date = models.PositiveSmallIntegerField()
+    is_active = models.BooleanField(default=True)
+    recorded_by = models.PositiveIntegerField(null=False)
+    recorded_at = models.DateTimeField(auto_now_add = True, null=True)
+
+    def __str__(self):
+        return self.code
+    
+    class Meta:
+        verbose_name = "Calculation Day"
+        verbose_name_plural = "Calculation Days"
+
+
 #============================================= salary ==============================================================
 class StaffSalary(models.Model):
     code = NameField(max_length=50, blank=True, null=True)

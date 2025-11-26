@@ -6,6 +6,8 @@ from payroll.views import *
 #-----------------------------------urls---------------------------------------------
 
 urlpatterns = [
+	path('calculation-day', CalculationDayAdd.as_view()),
+	path('calculation-day/list', CalculationDayList.as_view()),
 	path('salary', StaffSalaryAdd.as_view()),
 	path('salary/update/<int:pk>', StaffSalaryUpdate.as_view()),
 	path('salary/list', StaffSalaryList.as_view()),

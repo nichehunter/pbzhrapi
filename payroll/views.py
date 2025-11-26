@@ -30,6 +30,48 @@ from controller.models import SecurityFund,StaffSecurityFund
 from payroll.serializers import *
 
 
+#====================================================== calculation ====================================================
+class dayFilter(django_filters.FilterSet):
+
+    class Meta:
+        model = CalculationDay
+        fields = {
+            'id': ['exact', 'in'],
+            'code': ['exact', 'in'],
+            'date': ['exact'],
+            'is_active': ['exact']
+        }
+
+class CalculationDayAdd(CreateAPIView):
+
+    serializer_class = CalculationSerializer
+
+    def generate_calculation_code(self):
+        count = CalculationDay.objects.count() + 1
+        return f"{count:06d}"
+
+    def post(self, request):
+        serializer = CalculationSerializer(data=request.data)
+        if serializer.is_valid():
+            day = CalculationDay.objects.filter(is_active=True)
+            if day:
+                day.update(is_active=False)
+            serializer.save(code=self.generate_calculation_code())
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CalculationDayList(ListAPIView):
+    queryset = CalculationDay.objects.all()
+    serializer_class = CalculationSerializer
+    pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
+    filter_backends = [django_filters.rest_framework.DjangoFilterBackend,filters.SearchFilter,filters.OrderingFilter]
+    filterset_class = dayFilter
+    search_fields = ['code',]
+    ordering_fields = ['id','code']
+    ordering = ['-id']
+
+
 #====================================================== payroll ====================================================
 class staffSalaryFilter(django_filters.FilterSet):
 

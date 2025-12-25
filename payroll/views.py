@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.http.response import JsonResponse
 from django.utils import timezone
+from django.db import transaction
 import statistics
 
 import json, decimal, ast
@@ -81,19 +82,22 @@ class staffSalaryFilter(django_filters.FilterSet):
 
 
 class StaffSalaryAdd(CreateAPIView):
-
     serializer_class = SalarySerializer
 
     def post(self, request):
         serializer = SalarySerializer(data=request.data, many=True)
         if serializer.is_valid():
-            for x in serializer.validated_data:
-                staff = x.get('staff')
-                salary = StaffSalary.objects.filter(is_active=True, staff__id = staff.id)
-                if salary:
-                    salary.update(is_active=False)
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            try:
+                with transaction.atomic():  # start atomic transaction
+                    for x in serializer.validated_data:
+                        staff = x.get('staff')
+                        salary = StaffSalary.objects.filter(is_active=True, staff__id=staff.id)
+                        if salary.exists():
+                            salary.update(is_active=False)
+                    serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -322,14 +326,20 @@ class staffAllowanceSearch(django_filters.FilterSet):
 
 
 class StaffAllowanceAdd(CreateAPIView):
-
     serializer_class = StaffAllowanceSerializer
 
     def post(self, request):
         serializer = StaffAllowanceSerializer(data=request.data, many=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            try:
+                with transaction.atomic():  # start atomic transaction
+                    for x in serializer.validated_data:
+                        staff = x.get('staff')
+                        StaffAllowance.objects.filter(is_active=True, staff__id=staff.id).update(is_active=False)
+                    serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -365,14 +375,20 @@ class staffDeductionSearch(django_filters.FilterSet):
 
 
 class StaffDeductionAdd(CreateAPIView):
-
     serializer_class = StaffDeductionSerializer
 
     def post(self, request):
         serializer = StaffDeductionSerializer(data=request.data, many=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            try:
+                with transaction.atomic():  # atomic transaction
+                    for x in serializer.validated_data:
+                        staff = x.get('staff')
+                        StaffDeduction.objects.filter(is_active=True, staff__id=staff.id).update(is_active=False)
+                    serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

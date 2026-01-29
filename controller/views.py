@@ -200,7 +200,10 @@ class supervisorSearch(django_filters.FilterSet):
 
     class Meta:
         model = Supervisor
-        fields = {'staff__id' : ['exact', 'in'],'is_active' : ['exact']}
+        fields = {
+            'staff__id' : ['exact', 'in'],
+            'is_active' : ['exact']
+        }
 
 
 class SupervisorAdd(CreateAPIView):

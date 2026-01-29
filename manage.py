@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='coreapi.utils')
+
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
 import os

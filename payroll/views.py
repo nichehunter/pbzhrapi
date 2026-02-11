@@ -4,6 +4,8 @@ from django.contrib.auth.hashers import make_password
 from django.http.response import JsonResponse
 from django.utils import timezone
 from django.db import transaction
+from django.db.models.functions import Coalesce
+from collections import defaultdict
 import statistics
 
 import json, decimal, ast
@@ -26,6 +28,7 @@ import io, csv, pandas as pd
 from rest_framework.parsers import MultiPartParser
 
 from payroll.models import *
+from payroll.services import *
 from dictionary.models import DictionaryItem
 from controller.models import SecurityFund, StaffSecurityFund
 from payroll.serializers import *
@@ -87,6 +90,7 @@ class staffSalaryFilter(django_filters.FilterSet):
         model = StaffSalary
         fields = {
             "staff__id": ["exact", "in"],
+            "customer_number": ["exact", "in"],
             "account_number": ["exact", "in"],
             "tin_number": ["exact", "in"],
             "is_active": ["exact"],
@@ -129,6 +133,7 @@ class StaffSalaryList(ListAPIView):
         "code",
         "staff__full_name",
         "staff__staff_opf",
+        "customer_number",
         "account_number",
         "tin_number",
     ]
@@ -774,6 +779,145 @@ class PayrollAdd(CreateAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# class ProcessPayroll(APIView):
+#     @transaction.atomic
+#     def post(self, request):
+#         data = request.data
+#         staff_list = data.get("staff_payrolls", [])
+#         month = datetime.date.today().month
+#         year = datetime.date.today().year
+#         recorded_by = data.get("recorded_by")
+
+#         # 1. Create the Main Payroll Header
+#         payroll_header = Payroll.objects.create(
+#             code=f"PBZ{month:02}{(year % 100):02}",
+#             total_staff=len(staff_list),
+#             month=month,
+#             year=year,
+#             formula_id=data.get("formula_id"),
+#             recorded_by=recorded_by,
+#         )
+
+#         # 2. Process each staff member sent from Frontend
+#         for item in staff_list:
+#             # Prepare data for serializer
+#             item.update({"month": month, "year": year, "recorded_by": recorded_by})
+
+#             serializer = StaffPayrollAddSerializer(data=item)
+#             if serializer.is_valid():
+#                 serializer.save(payroll=payroll_header, recorded_by=recorded_by)
+
+#                 staff_id = item.get("staff")
+#                 MonthlyAllowance.objects.filter(
+#                     staff_id=staff_id,
+#                     is_active=True,
+#                     month_consumed=0,
+#                 ).update(month_consumed=datetime.date.today().month, is_active=False)
+
+#                 MonthlyDeduction.objects.filter(
+#                     staff_id=staff_id,
+#                     is_active=True,
+#                     month_consumed=0,
+#                 ).update(month_consumed=datetime.date.today().month, is_active=False)
+#             else:
+#                 # If one staff record is wrong, rollback everything
+#                 transaction.set_rollback(True)
+#                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+#         return Response(
+#             {"message": "Payroll and status updates completed successfully"},
+#             status=status.HTTP_201_CREATED,
+#         )
+
+
+class ProcessPayroll(APIView):
+    @transaction.atomic
+    def post(self, request):
+        data = request.data
+        staff_list = data.get("staff_payrolls", [])
+        month = datetime.date.today().month
+        year = datetime.date.today().year
+        recorded_by = data.get("recorded_by")
+
+        cut_off_active = MonthlyAllowance.objects.filter(
+            month_consumed=month, is_active=True
+        ).exists()
+
+        # Create Header
+        payroll_header = Payroll.objects.create(
+            code=f"pbz{month:02}{(year % 100):02}",
+            total_staff=len(staff_list),
+            month=month,
+            year=year,
+            formula_id=data.get("formula_id"),
+            recorded_by=recorded_by,
+        )
+
+        staff_payroll_objects = []
+        staff_ids = []
+
+        # 1. Validate and Prepare Objects in Memory
+        for item in staff_list:
+            staff_id = item.get("staff")
+            staff_ids.append(staff_id)
+
+            # Map frontend data to Model fields
+            staff_payroll_objects.append(
+                StaffPayroll(
+                    payroll=payroll_header,
+                    staff_id=staff_id,
+                    basic_salary=item.get("basic_salary"),
+                    total_allowance=item.get("total_allowance"),
+                    total_deduction=item.get("total_deduction"),
+                    payee=item.get("payee"),
+                    security_fund=item.get("security_fund", 0),
+                    helth_fund=item.get("helth_fund", 0),
+                    net_salary=item.get("net_salary"),
+                    month=month,
+                    year=year,
+                    recorded_by=recorded_by,
+                )
+            )
+
+        # 2. Bulk Create all Staff Payroll records in ONE query
+        StaffPayroll.objects.bulk_create(staff_payroll_objects)
+
+        # 3. Bulk Update Allowances/Deductions in ONE query each
+        if cut_off_active:
+            MonthlyAllowance.objects.filter(
+                month_consumed=month,
+                is_active=True,
+                year_consumed=year,
+            ).update(is_active=False)
+
+            MonthlyDeduction.objects.filter(
+                month_consumed=month,
+                is_active=True,
+                year_consumed=year,
+            ).update(is_active=False)
+        else:
+            MonthlyAllowance.objects.filter(
+                is_active=True, month_consumed=0, year_consumed=0
+            ).update(
+                month_consumed=month,
+                is_active=False,
+                year_consumed=year,
+            )
+
+            MonthlyDeduction.objects.filter(
+                is_active=True, month_consumed=0, year_consumed=0
+            ).update(
+                month_consumed=month,
+                is_active=False,
+                year_consumed=year,
+            )
+
+        return Response(
+            {"message": "Payroll processed in bulk successfully"},
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class PayrollList(ListAPIView):
     queryset = Payroll.objects.all()
     serializer_class = PayrollSerializer
@@ -818,177 +962,20 @@ class PayrollFreeze(APIView):
         MonthlyAllowance.objects.filter(
             is_active=True,
             month_consumed=0,
-            month=datetime.date.today().month,
-            year=datetime.date.today().year,
-        ).update(month_consumed=datetime.date.today().month, is_active=False)
+            year_consumed=0,
+        ).update(
+            month_consumed=datetime.date.today().month,
+            year_consumed=datetime.date.today().year,
+        )
         MonthlyDeduction.objects.filter(
             is_active=True,
             month_consumed=0,
-            month=datetime.date.today().month,
-            year=datetime.date.today().year,
-        ).update(month_consumed=datetime.date.today().month, is_active=False)
+            year_consumed=0,
+        ).update(
+            month_consumed=datetime.date.today().month,
+            year_consumed=datetime.date.today().year,
+        )
         return Response("done", status=status.HTTP_200_OK)
-
-
-# class GeneratePayroll(APIView):
-#     def get(self, request):
-#         with transaction.atomic():
-#             param_list = request.query_params.get("staff_ids", "")
-#             # id_list = ast.literal_eval(param_list)
-#             id_list = [int(id) for id in param_list.split(",") if id.isdigit()]
-#             if id_list:
-#                 # print(id_list)
-#                 staff_ids = Staff.objects.filter(
-#                     is_active=True, id__in=id_list, staffsalary__is_active=True
-#                 ).values("id", "full_name", "staff_opf", "code")
-#             else:
-#                 staff_ids = Staff.objects.filter(
-#                     is_active=True, staffsalary__is_active=True
-#                 ).values("id", "full_name", "staff_opf", "code")
-
-#             payroll_data = []
-#             variable_values = {}
-#             for staff_id in staff_ids:
-#                 staff = Staff.objects.get(id=staff_id["id"])
-#                 staff_salaries = StaffSalary.objects.filter(staff=staff, is_active=True)
-#                 staff_allowances = MonthlyAllowance.objects.filter(
-#                     staff=staff,
-#                     month_consumed=datetime.date.today().month,
-#                     year=datetime.date.today().year,
-#                 )
-#                 staff_deductions = MonthlyDeduction.objects.filter(
-#                     staff=staff,
-#                     month_consumed=datetime.date.today().month,
-#                     year=datetime.date.today().year,
-#                 )
-#                 staff_allowances1 = MonthlyAllowance.objects.filter(
-#                     staff=staff, is_active=True
-#                 )
-#                 staff_deductions1 = MonthlyDeduction.objects.filter(
-#                     staff=staff, is_active=True
-#                 )
-#                 staff_funds = StaffSecurityFund.objects.filter(
-#                     staff=staff, is_active=True
-#                 )
-#                 staff_helths = HelthDeduction.objects.filter(is_active=True)
-#                 paye_ranges = PayeeDeduction.objects.filter(is_active=True)
-#                 helth_fund = PayeeDeduction.objects.filter(is_active=True)
-
-#                 payrollData = {}
-
-#                 variables = PayrollVariable.objects.all()
-#                 formula = PayrollFormula.objects.filter(is_active=True).order_by("id")
-#                 for vr in variables:
-#                     variable_values[vr.name] = 0
-#                 for fr in formula:
-#                     payrollData[fr.code] = 0
-#                 for fr in formula:
-#                     if staff_salaries:
-#                         staff_salary = StaffSalary.objects.get(
-#                             staff=staff, is_active=True
-#                         )
-#                         variable_values["basic_salary"] = float(staff_salary.amount)
-#                         payrollData["basic_salary"] = float(staff_salary.amount)
-#                     else:
-#                         variable_values["basic_salary"] = float(0)
-#                         payrollData["basic_salary"] = float(0)
-
-#                     if staff_allowances:
-#                         variable_values["allowance"] = float(
-#                             sum(allowance.amount for allowance in staff_allowances)
-#                         )
-#                         payrollData["allowance"] = float(
-#                             sum(allowance.amount for allowance in staff_allowances)
-#                         )
-#                     else:
-#                         variable_values["allowance"] = float(
-#                             sum(allowance.amount for allowance in staff_allowances1)
-#                         )
-#                         payrollData["allowance"] = float(
-#                             sum(allowance.amount for allowance in staff_allowances1)
-#                         )
-
-#                     if staff_deductions:
-#                         variable_values["deduction"] = float(
-#                             sum(deduction.amount for deduction in staff_deductions)
-#                         )
-#                         payrollData["deduction"] = float(
-#                             sum(deduction.amount for deduction in staff_deductions)
-#                         )
-#                     else:
-#                         variable_values["deduction"] = float(
-#                             sum(deduction.amount for deduction in staff_deductions1)
-#                         )
-#                         payrollData["deduction"] = float(
-#                             sum(deduction.amount for deduction in staff_deductions1)
-#                         )
-
-#                     if staff_helths:
-#                         helth = HelthDeduction.objects.get(is_active=True)
-#                         variable_values["helth_percentage"] = float(helth.percentage)
-
-#                     if staff_funds:
-#                         staff_fund = StaffSecurityFund.objects.get(
-#                             staff=staff, is_active=True
-#                         )
-#                         fund = SecurityFundDeduction.objects.get(
-#                             is_active=True, fund=staff_fund.fund
-#                         )
-#                         variable_values["pension_percentage"] = float(fund.percentage)
-#                     else:
-#                         variable_values["pension_percentage"] = float(0)
-#                     payrollData[fr.code] = 0
-
-#                     payrollData[fr.code] = self.evaluate_formula(
-#                         fr.expression, variable_values
-#                     )
-
-#                     if fr.code in payrollData:
-#                         gross = payrollData["gross_salary"]
-#                         security = payrollData["security_fund"]
-#                         helth = payrollData["helth_fund"]
-#                         paye_range = self.find_applicable_paye_range(
-#                             (gross - (security - helth)), paye_ranges
-#                         )
-#                         variable_values["payee_lower_range"] = float(
-#                             paye_range["lower_range"]
-#                         )
-#                         variable_values["payee_percentage"] = float(
-#                             paye_range["range_percentage"]
-#                         )
-#                         variable_values["payee_initial_amount"] = float(
-#                             paye_range["initia_amount"]
-#                         )
-#                         payrollData[fr.code] = self.evaluate_formula(
-#                             fr.expression, variable_values
-#                         )
-
-#                 payroll_data.append({"staff_data": staff_id, "payroll": payrollData})
-
-#             return Response({"payrollData": payroll_data})
-
-#     def find_applicable_paye_range(self, remaining_amount, paye_ranges):
-#         """
-#         Find the applicable PAYE range based on the remaining amount.
-#         """
-#         for paye_range in paye_ranges:
-#             # print(paye_range)
-#             if paye_range.lower_range <= remaining_amount < paye_range.upper_range:
-#                 return {
-#                     "lower_range": paye_range.lower_range,
-#                     "initia_amount": paye_range.initia_amount,
-#                     "range_percentage": round(
-#                         decimal.Decimal(paye_range.range_percentage), 2
-#                     ),
-#                 }
-
-#         return None
-
-#     def evaluate_formula(self, expression, variables):
-#         """
-#         Evaluate a formula expression using Python's eval.
-#         """
-#         return round((eval(expression, variables)), 2)
 
 
 class GeneratePayroll(APIView):
@@ -1004,17 +991,31 @@ class GeneratePayroll(APIView):
             # 1. SETUP PREFETCHES (Prevents N+1 Query Slowness)
             salary_prefetch = Prefetch(
                 "staffsalary_set",
-                queryset=StaffSalary.objects.filter(is_active=True, amount__gt=0),
+                queryset=StaffSalary.objects.filter(is_active=True),
                 to_attr="active_salaries",
             )
+
+            cut_off_active = MonthlyAllowance.objects.filter(
+                month_consumed=month, is_active=True
+            ).exists()
+
+            allowance_filter = Q(month_consumed=month, is_active=True) | Q(
+                is_active=True
+            )
+
             allowance_prefetch = Prefetch(
                 "monthlyallowance_set",
-                queryset=MonthlyAllowance.objects.filter(is_active=True),
+                queryset=MonthlyAllowance.objects.filter(allowance_filter),
                 to_attr="all_allowances",
             )
+
+            deduction_filter = Q(month_consumed=month, is_active=True) | Q(
+                is_active=True
+            )
+
             deduction_prefetch = Prefetch(
                 "monthlydeduction_set",
-                queryset=MonthlyDeduction.objects.filter(is_active=True),
+                queryset=MonthlyDeduction.objects.filter(deduction_filter),
                 to_attr="all_deductions",
             )
             fund_prefetch = Prefetch(
@@ -1022,19 +1023,21 @@ class GeneratePayroll(APIView):
                 queryset=StaffSecurityFund.objects.filter(is_active=True),
                 to_attr="active_funds",
             )
+            health_prefetch = Prefetch(
+                "staffhealthfund_set",
+                queryset=StaffHealthFund.objects.filter(is_active=True),
+                to_attr="active_health_funds",
+            )
 
             # 2. OPTIMIZED QUERY
             staff_qs = (
-                Staff.objects.filter(
-                    is_active=True,
-                    staffsalary__is_active=True,
-                    staffsalary__amount__gt=0,
-                )
+                Staff.objects.filter(is_active=True, staffsalary__is_active=True)
                 .prefetch_related(
                     salary_prefetch,
                     allowance_prefetch,
                     deduction_prefetch,
                     fund_prefetch,
+                    health_prefetch,
                 )
                 .distinct()
                 .order_by("staff_opf")
@@ -1049,7 +1052,10 @@ class GeneratePayroll(APIView):
                 PayrollFormula.objects.filter(is_active=True).order_by("id")
             )
             paye_ranges = list(PayeeDeduction.objects.filter(is_active=True))
-            helth_deduction = HelthDeduction.objects.filter(is_active=True).first()
+            # helth_deduction = HelthDeduction.objects.filter(is_active=True).first()
+            health_funds = {
+                hf.fund_id: hf for hf in HelthDeduction.objects.filter(is_active=True)
+            }
             security_funds = {
                 sf.fund_id: sf
                 for sf in SecurityFundDeduction.objects.filter(is_active=True)
@@ -1072,42 +1078,45 @@ class GeneratePayroll(APIView):
                 salary = staff.active_salaries[0] if staff.active_salaries else None
                 basic_salary = salary.amount if salary else decimal.Decimal("0.00")
                 variable_values["basic_salary"] = basic_salary
-                payroll_result["basic_salary"] = basic_salary  # <-- ADDED FOR OUTPUT
+                payroll_result["basic_salary"] = basic_salary
 
                 # --- Allowances ---
-                curr_allowances = [
-                    a.amount
-                    for a in staff.all_allowances
-                    if a.month_consumed == month and a.year == year
-                ]
-                if not curr_allowances:
+                raw_allowances = staff.all_allowances
+                if cut_off_active:
                     curr_allowances = [
-                        a.amount for a in staff.all_allowances if a.is_active
+                        a.amount for a in raw_allowances if a.month_consumed == month
                     ]
+                else:
+                    curr_allowances = [a.amount for a in raw_allowances if a.is_active]
 
-                allowance_total = sum(curr_allowances)
+                allowance_total = round_decimal(sum(curr_allowances))
                 variable_values["allowance"] = allowance_total
-                payroll_result["allowance"] = allowance_total  # <-- ADDED FOR OUTPUT
+                payroll_result["allowance"] = allowance_total
 
                 # --- Deductions ---
-                curr_deductions = [
-                    d.amount
-                    for d in staff.all_deductions
-                    if d.month_consumed == month and d.year == year
-                ]
-                if not curr_deductions:
+                raw_deductions = staff.all_deductions
+                if cut_off_active:
                     curr_deductions = [
-                        d.amount for d in staff.all_deductions if d.is_active
+                        d.amount for d in raw_deductions if d.month_consumed == month
                     ]
+                else:
+                    curr_deductions = [d.amount for d in raw_deductions if d.is_active]
 
-                deduction_total = sum(curr_deductions)
+                deduction_total = round_decimal(sum(curr_deductions))
                 variable_values["deduction"] = deduction_total
-                payroll_result["deduction"] = deduction_total  # <-- ADDED FOR OUTPUT
+                payroll_result["deduction"] = deduction_total
 
                 # --- Health & Pension ---
-                h_perc = helth_deduction.percentage if helth_deduction else 0
+                staff_health = (
+                    staff.active_health_funds[0] if staff.active_health_funds else None
+                )
+                if staff_health and staff_health.fund_id in health_funds:
+                    h_perc = health_funds[staff_health.fund_id].percentage
+                else:
+                    h_perc = 0
+
                 variable_values["helth_percentage"] = h_perc
-                payroll_result["helth_percentage"] = h_perc  # <-- ADDED FOR OUTPUT
+                payroll_result["helth_percentage"] = h_perc
 
                 staff_fund = staff.active_funds[0] if staff.active_funds else None
                 if staff_fund and staff_fund.fund_id in security_funds:
@@ -1116,36 +1125,43 @@ class GeneratePayroll(APIView):
                     p_perc = 0
 
                 variable_values["pension_percentage"] = p_perc
-                payroll_result["pension_percentage"] = p_perc  # <-- ADDED FOR OUTPUT
+                payroll_result["pension_percentage"] = p_perc
 
-                # --- Formula Calculation: Pass 1 ---
                 for formula in payroll_formulas:
                     res = self.evaluate_formula(formula.expression, variable_values)
                     payroll_result[formula.code] = res
                     variable_values[formula.code] = res
 
-                # --- PAYE Logic ---
                 gross = payroll_result.get("gross_salary", 0)
                 security = payroll_result.get("security_fund", 0)
                 helth = payroll_result.get("helth_fund", 0)
 
                 taxable = gross - (security + helth)
-                paye_range = self.find_applicable_paye_range(taxable, paye_ranges)
 
-                if paye_range:
+                if staff.staff_category == "primary":
+                    paye_range = self.find_applicable_paye_range(taxable, paye_ranges)
+
+                    if paye_range:
+                        variable_values.update(
+                            {
+                                "payee_lower_range": paye_range["lower_range"],
+                                "payee_percentage": paye_range["range_percentage"],
+                                "payee_initial_amount": paye_range["initia_amount"],
+                            }
+                        )
+                else:
                     variable_values.update(
                         {
-                            "payee_lower_range": paye_range["lower_range"],
-                            "payee_percentage": paye_range["range_percentage"],
-                            "payee_initial_amount": paye_range["initia_amount"],
+                            "payee_lower_range": 0,
+                            "payee_percentage": 0.3,
+                            "payee_initial_amount": 0,
                         }
                     )
 
-                    # --- Formula Calculation: Pass 2 (Re-calculate with PAYE) ---
-                    for formula in payroll_formulas:
-                        res = self.evaluate_formula(formula.expression, variable_values)
-                        payroll_result[formula.code] = res
-                        variable_values[formula.code] = res
+                for formula in payroll_formulas:
+                    res = self.evaluate_formula(formula.expression, variable_values)
+                    payroll_result[formula.code] = res
+                    variable_values[formula.code] = res
 
                 # 5. CONSTRUCT FINAL OBJECT
                 payroll_data.append(
@@ -1174,9 +1190,7 @@ class GeneratePayroll(APIView):
 
     def evaluate_formula(self, expression, variables):
         try:
-            # We convert to float for the math, then back to Decimal for precision
             context = {k: float(v) for k, v in variables.items()}
-            # Disabling builtins for basic security
             result = eval(expression, {"__builtins__": None}, context)
             return round(decimal.Decimal(str(result)), 2)
         except Exception:
@@ -1295,3 +1309,516 @@ class PayrollVariableList(ListAPIView):
     search_fields = ["code", "name"]
     ordering_fields = ["id", "code", "name"]
     ordering = ["code"]
+
+
+class PayrollSummary(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+
+        if not payroll_id:
+            return Response({"error": "payroll_id is mandatory"}, status=400)
+
+        salary_prefetch = Prefetch(
+            "staff__staffsalary_set",
+            queryset=StaffSalary.objects.filter(is_active=True).only(
+                "staff_id", "branch_code", "customer_number", "ledger", "sub_ledger"
+            ),
+            to_attr="active_salary",
+        )
+
+        dept_prefetch = Prefetch(
+            "staff__staff_department",
+            queryset=StaffDepartment.objects.filter(is_active=True).only(
+                "staff_id", "branch_id", "department_id", "position_id"
+            ),
+            to_attr="active_dept",
+        )
+
+        queryset = (
+            StaffPayroll.objects.filter(payroll_id=payroll_id)
+            .select_related("staff")
+            .prefetch_related(salary_prefetch, dept_prefetch)
+        )
+
+        export_data = []
+        for record in queryset:
+            salary = (
+                record.staff.active_salary[0] if record.staff.active_salary else None
+            )
+            dept_info = (
+                record.staff.active_dept[0] if record.staff.active_dept else None
+            )
+
+            supervisor = record.staff.staff.filter(is_active=True).first()
+
+            export_data.append(
+                {
+                    "staff_opf": record.staff.staff_opf,
+                    "full_name": record.staff.full_name,
+                    "net_salary": record.net_salary,
+                    "branch_code": salary.branch_code if salary else None,
+                    "customer_number": salary.customer_number if salary else None,
+                    "ledger": salary.ledger if salary else None,
+                    "sub_ledger": salary.sub_ledger if salary else None,
+                    "branch_id": dept_info.branch_id if dept_info else None,
+                    "department_id": dept_info.department_id if dept_info else None,
+                    "position_id": dept_info.position_id if dept_info else None,
+                    "supervise_type_id": (
+                        supervisor.supervise_type_id if supervisor else None
+                    ),
+                }
+            )
+
+        return Response({"results": export_data})
+
+
+class PayrollAllowanceSummary(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+        if not payroll_id:
+            return Response({"error": "payroll_id is mandatory"}, status=400)
+
+        try:
+            payroll_record = Payroll.objects.get(id=payroll_id)
+            p_month, p_year = payroll_record.month, payroll_record.year
+        except Payroll.DoesNotExist:
+            return Response({"error": "Payroll not found"}, status=404)
+
+        senior_ids = [40, 321, 322]
+
+        payrolls = (
+            StaffPayroll.objects.filter(
+                payroll_id=payroll_id, staff__staff_department__is_active=True
+            )
+            .annotate(
+                g_id=Coalesce(
+                    "staff__staff_department__branch__parent_branch_id",
+                    "staff__staff_department__branch_id",
+                ),
+                g_name=Coalesce(
+                    "staff__staff_department__branch__parent_branch__branch_name",
+                    "staff__staff_department__branch__branch_name",
+                ),
+                g_code=Coalesce(
+                    "staff__staff_department__branch__parent_branch__branch_code",
+                    "staff__staff_department__branch__branch_code",
+                ),
+                is_snr=Case(
+                    When(
+                        staff__staff__supervise_type_id__in=senior_ids,
+                        staff__staff__is_active=True,
+                        then=True,
+                    ),
+                    default=False,
+                    output_field=BooleanField(),
+                ),
+            )
+            .values("staff_id", "net_salary", "g_id", "g_name", "g_code", "is_snr")
+        )
+
+        allowances = MonthlyAllowance.objects.filter(
+            month_consumed=p_month,
+            year_consumed=p_year,
+            is_active=False,
+        ).values("staff_id", "allowance_id", "amount")
+
+        allowance_map = defaultdict(lambda: {"housing": 0, "others": 0})
+        for acc in allowances:
+            sid = acc["staff_id"]
+            if acc["allowance_id"] == 10:
+                allowance_map[sid]["housing"] += acc["amount"]
+            else:
+                allowance_map[sid]["others"] += acc["amount"]
+
+        final_groups = defaultdict(
+            lambda: {
+                "Regular": {"count": 0, "salary": 0, "housing": 0, "allowance": 0},
+                "Senior": {"count": 0, "salary": 0, "housing": 0, "allowance": 0},
+            }
+        )
+        branch_info = {}
+
+        for p in payrolls:
+            bid = p["g_id"]
+            branch_info[bid] = {"name": p["g_name"], "code": p["g_code"]}
+            group_key = "Senior" if p["is_snr"] else "Regular"
+            sid = p["staff_id"]
+
+            final_groups[bid][group_key]["count"] += 1
+            final_groups[bid][group_key]["salary"] += p["net_salary"]
+            final_groups[bid][group_key]["housing"] += allowance_map[sid]["housing"]
+            final_groups[bid][group_key]["allowance"] += allowance_map[sid]["others"]
+
+        results = []
+        sorted_branches = sorted(
+            branch_info.keys(), key=lambda x: branch_info[x]["name"]
+        )
+
+        for bid in sorted_branches:
+            info = branch_info[bid]
+            reg = final_groups[bid]["Regular"]
+            snr = final_groups[bid]["Senior"]
+
+            # Pre-calculate the total staff count for this branch group (Regular + Senior)
+            branch_total_staff = reg["count"] + snr["count"]
+
+            # --- REGULAR STAFF ROWS ---
+            if reg["count"] > 0:
+                results.append(
+                    self._make_row(
+                        info,
+                        "Regular Staff",
+                        "Salary",
+                        "6643",
+                        reg["salary"],
+                        branch_total_staff,
+                    )
+                )
+                results.append(
+                    self._make_row(
+                        info,
+                        "Regular Staff",
+                        "Housing",
+                        "6650",
+                        reg["housing"],
+                        branch_total_staff,
+                    )
+                )
+                results.append(
+                    self._make_row(
+                        info,
+                        "Regular Staff",
+                        "Allowance",
+                        "6644",
+                        reg["allowance"],
+                        branch_total_staff,
+                    )
+                )
+
+            # --- SENIOR MANAGEMENT ROWS ---
+            if snr["count"] > 0:
+                results.append(
+                    self._make_row(
+                        info,
+                        "Senior Management",
+                        "Salary",
+                        "6640",
+                        snr["salary"],
+                        branch_total_staff,
+                    )
+                )
+                snr_total_allowance = snr["allowance"] + snr["housing"]
+                results.append(
+                    self._make_row(
+                        info,
+                        "Senior Management",
+                        "Allowance",
+                        "6641",
+                        snr_total_allowance,
+                        branch_total_staff,
+                    )
+                )
+
+        return Response(
+            {
+                "payroll_code": payroll_record.code,
+                "period": f"{p_month}/{p_year}",
+                "results": results,
+            }
+        )
+
+    def _make_row(
+        self, branch_info, group_name, amount_type, ledger, amount, staff_count
+    ):
+        return {
+            "branch_code": branch_info["code"],
+            "branch_name": branch_info["name"],
+            "total_staff": staff_count,  # New field added here
+            "customer": "0",
+            "ledger": ledger,
+            "sub_ledger": "0",
+            "group": group_name,
+            "type": amount_type,
+            "amount": round_decimal(amount),
+        }
+
+    # def _make_row(self, branch_info, group_name, amount_type, ledger, amount):
+    #     return {
+    #         "branch_code": branch_info["code"],
+    #         "branch_name": branch_info["name"],
+    #         "customer": "0",
+    #         "Currency": "1",
+    #         "ledger": ledger,
+    #         "sub_ledger": "0",
+    #         "group": group_name,
+    #         "type": amount_type,
+    #         "amount": round_decimal(amount),
+    #     }
+
+
+class PayrollDeductionSummary(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+        if not payroll_id:
+            return Response({"error": "payroll_id is mandatory"}, status=400)
+
+        # 1. Fetch Payroll context
+        try:
+            payroll_record = Payroll.objects.get(id=payroll_id)
+            p_month, p_year = payroll_record.month, payroll_record.year
+        except Payroll.DoesNotExist:
+            return Response({"error": "Payroll not found"}, status=404)
+
+        # 2. Query MonthlyDeductions for this payroll period
+        summary = (
+            MonthlyDeduction.objects.filter(
+                month_consumed=p_month, year_consumed=p_year
+            )
+            .exclude(deduction_id__in=[2, 3, 6])
+            .values(
+                "deduction_id",
+                "deduction__name",
+                "deduction__branch",
+                "deduction__account",
+                "deduction__ledger",
+                "deduction__sub_ledger",
+                "organization__name",
+                "organization__branch",
+                "organization__account",
+                "organization__ledger",
+                "organization__sub_ledger",
+            )
+            .annotate(
+                total_amount=Sum("amount"),
+                # Logic for the 'name' field
+                computed_name=Case(
+                    When(deduction_id=1, then=F("organization__name")),
+                    default=F("deduction__name"),
+                    output_field=CharField(),
+                ),
+                # Logic for the 'account' field
+                computed_barnch=Case(
+                    When(deduction_id=1, then=F("organization__branch")),
+                    default=F("deduction__branch"),
+                    output_field=CharField(),
+                ),
+                computed_account=Case(
+                    When(deduction_id=1, then=F("organization__account")),
+                    default=F("deduction__account"),
+                    output_field=CharField(),
+                ),
+                computed_ledger=Case(
+                    When(deduction_id=1, then=F("organization__ledger")),
+                    default=F("deduction__ledger"),
+                    output_field=CharField(),
+                ),
+                computed_sub_ledger=Case(
+                    When(deduction_id=1, then=F("organization__sub_ledger")),
+                    default=F("deduction__sub_ledger"),
+                    output_field=CharField(),
+                ),
+            )
+            .order_by("computed_name")
+        )
+
+        # 3. Format response
+        results = []
+        for item in summary:
+            results.append(
+                {
+                    "deduction_id": item["deduction_id"],
+                    "name": item["computed_name"],
+                    "branch": item["computed_barnch"],
+                    "account": item["computed_account"],
+                    "ledger": item["computed_ledger"],
+                    "sub_ledger": item["computed_sub_ledger"],
+                    "amount": round_decimal(item["total_amount"]),
+                }
+            )
+
+        return Response(
+            {
+                "payroll_code": payroll_record.code,
+                "period": f"{p_month}/{p_year}",
+                "results": results,
+            }
+        )
+
+
+class PayrollContributionAllowanceSummary(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+        if not payroll_id:
+            return Response({"error": "payroll_id is mandatory"}, status=400)
+
+        queryset = StaffPayroll.objects.filter(payroll_id=payroll_id)
+
+        # 1. SDL Calculation (4% of Gross)
+        sdl_raw = queryset.aggregate(
+            total=Sum(
+                (F("basic_salary") + F("total_allowance")) * Value(0.04),
+                output_field=DecimalField(),
+            )
+        )["total"]
+
+        # 2. ZHSF Calculation (3.5% of Basic if active in Health Fund)
+        zhsf_raw = queryset.aggregate(
+            total=Sum(
+                Case(
+                    When(
+                        staff__staffhealthfund__is_active=True,
+                        then=F("basic_salary") * Value(0.035),
+                    ),
+                    default=Value(0),
+                    output_field=DecimalField(),
+                )
+            )
+        )["total"]
+
+        # 3. Pension Calculation (14% if fund=1, else 13%)
+        pension_query = (
+            queryset.values(name=F("staff__staffsecurityfund__fund__name"))
+            .filter(staff__staffsecurityfund__is_active=True)
+            .annotate(
+                raw_amount=Sum(
+                    Case(
+                        When(
+                            staff__staffsecurityfund__fund_id=1,
+                            then=F("basic_salary") * Value(0.14),
+                        ),
+                        default=F("basic_salary") * Value(0.13),
+                        output_field=DecimalField(),
+                    )
+                )
+            )
+        )
+
+        # Apply your round_decimal service to the results
+        results = {
+            "sdl": {
+                "branch": "201",
+                "customer": "0",
+                "ledger": "6648",
+                "sub_ledger": "0",
+                "amount": round_decimal(sdl_raw),
+            },
+            "zhsf": {
+                "branch": "201",
+                "customer": "0",
+                "ledger": "6651",
+                "sub_ledger": "0",
+                "amount": round_decimal(zhsf_raw),
+            },
+            "pension_contributions": [
+                {
+                    "fund_name": item["name"],
+                    "branch": "201",
+                    "customer": "0",
+                    "ledger": "6647",
+                    "sub_ledger": "0",
+                    "amount": round_decimal(item["raw_amount"]),
+                }
+                for item in pension_query
+            ],
+        }
+
+        return Response(results)
+
+
+class PayrollContributionDeductionSummary(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+        if not payroll_id:
+            return Response({"error": "payroll_id is mandatory"}, status=400)
+
+        queryset = StaffPayroll.objects.filter(payroll_id=payroll_id)
+
+        salary_raw = queryset.aggregate(
+            total=Sum(
+                F("net_salary"),
+                output_field=DecimalField(),
+            )
+        )["total"]
+
+        payee_raw = queryset.aggregate(
+            total=Sum(
+                ((F("basic_salary") + F("total_allowance")) * Value(0.04)) + F("payee"),
+                output_field=DecimalField(),
+            )
+        )["total"]
+
+        # 2. ZHSF Calculation (3.5% of Basic if active in Health Fund)
+        zhsf_raw = queryset.aggregate(
+            total=Sum(
+                Case(
+                    When(
+                        staff__staffhealthfund__is_active=True,
+                        then=F("basic_salary") * Value(0.07),
+                    ),
+                    default=Value(0),
+                    output_field=DecimalField(),
+                )
+            )
+        )["total"]
+
+        # 3. Pension Calculation (14% if fund=1, else 13%)
+        pension_query = (
+            queryset.values(
+                name=F("staff__staffsecurityfund__fund__name"),
+                branch=F("staff__staffsecurityfund__fund__branch"),
+                customer=F("staff__staffsecurityfund__fund__account"),
+                ledger=F("staff__staffsecurityfund__fund__ledger"),
+                sub_ledger=F("staff__staffsecurityfund__fund__sub_ledger"),
+            )
+            .filter(staff__staffsecurityfund__is_active=True)
+            .annotate(
+                raw_amount=Sum(
+                    Case(
+                        When(
+                            staff__staffsecurityfund__fund_id=1,
+                            then=F("basic_salary") * Value(0.21),
+                        ),
+                        default=F("basic_salary") * Value(0.20),
+                        output_field=DecimalField(),
+                    )
+                )
+            )
+        )
+
+        # Apply your round_decimal service to the results
+        results = {
+            "salary": {
+                "branch": "201",
+                "customer": "0",
+                "ledger": "5834",
+                "sub_ledger": "0",
+                "amount": round_decimal(salary_raw),
+            },
+            "payee": {
+                "branch": "201",
+                "customer": "0",
+                "ledger": "5731",
+                "sub_ledger": "0",
+                "amount": round_decimal(payee_raw),
+            },
+            "zhsf": {
+                "branch": "201",
+                "customer": "0",
+                "ledger": "5834",
+                "sub_ledger": "0",
+                "amount": round_decimal(zhsf_raw),
+            },
+            "pension_contributions": [
+                {
+                    "fund_name": item["name"],
+                    "branch": item["branch"],
+                    "customer": item["customer"],
+                    "ledger": item["ledger"],
+                    "sub_ledger": item["sub_ledger"],
+                    "amount": round_decimal(item["raw_amount"]),
+                }
+                for item in pension_query
+            ],
+        }
+
+        return Response(results)

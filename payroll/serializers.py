@@ -259,6 +259,14 @@ class StaffPayrollSerializer(serializers.ModelSerializer):
         read_only_fields = ('id',)
 
 
+class StaffPayrollAddSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StaffPayroll
+        fields = [
+            'staff', 'basic_salary', 'total_allowance', 'total_deduction', 
+            'payee', 'security_fund', 'helth_fund', 'net_salary', 'month', 'year'
+        ]
+
 class StaffPayrollListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     payroll = PayrollSerializer(read_only=True)

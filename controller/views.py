@@ -682,7 +682,9 @@ class StaffDepartmentList(ListAPIView):
 
 
 class DepartmentStaffList(ListAPIView):
-    queryset = StaffDepartment.objects.filter(is_active=True)
+    queryset = StaffDepartment.objects.filter(
+        is_active=True, staff__is_active=True, staff__is_exit=False
+    ).select_related("staff", "branch", "department")
     serializer_class = DepartmentStaffSerializer
     pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
     filter_backends = [
@@ -706,7 +708,9 @@ class DepartmentStaffList(ListAPIView):
 
 
 class StaffDepartmentFilter(ListAPIView):
-    queryset = StaffDepartment.objects.filter(is_active=True)
+    queryset = StaffDepartment.objects.filter(
+        is_active=True, staff__is_active=True, staff__is_exit=False
+    ).select_related("staff", "branch", "department")
     serializer_class = DepartmentStaffSerializer
     pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
     filter_backends = [

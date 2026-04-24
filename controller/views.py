@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.http.response import JsonResponse
+from django.db import transaction
 import statistics
 
 import json
@@ -68,7 +69,11 @@ class staffSearch(django_filters.FilterSet):
 
     class Meta:
         model = Staff
-        fields = {"staff_opf": ["exact", "in"], "is_active": ["exact"]}
+        fields = {
+            "staff_opf": ["exact", "in"],
+            "is_active": ["exact"],
+            "is_exit": ["exact"],
+        }
 
 
 class staffBranchSearch(django_filters.FilterSet):
@@ -104,7 +109,7 @@ class StaffList(ListAPIView):
         filters.OrderingFilter,
     ]
     filterset_class = staffSearch
-    search_fields = ["staff_opf", "full_name"]
+    search_fields = ["^staff_opf", "^full_name"]
     ordering_fields = ["id", "staff_opf", "full_name"]
     ordering = ["staff_opf"]
 
@@ -143,10 +148,10 @@ class StaffBranchDetails(ListAPIView):
     ]
     filterset_class = staffBranchSearch
     search_fields = [
-        "branch__branch_code",
-        "department__department_name",
-        "branch__branch_name",
-        "department__department_name",
+        "^branch__branch_code",
+        "^department__department_name",
+        "^branch__branch_name",
+        "^department__department_name",
     ]
     ordering_fields = ["id"]
     ordering = ["-id"]
@@ -170,6 +175,71 @@ class StaffUpdateStatus(CreateAPIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StaffQuickList(APIView):
+    def get(self, request):
+        staff_data = (
+            Staff.objects.filter(is_active=True)
+            .values("id", "staff_opf", "full_name")
+            .order_by("staff_opf")
+            .iterator(chunk_size=1000)
+        )
+        return Response(list(staff_data))
+
+
+class ChangeStaffStatus(APIView):
+    def post(self, request):
+        staff_id = request.data.get("staff")
+        new_status = request.data.get("status")  # 'exit' or 'inactive'
+        doe = request.data.get(
+            "doe"
+        )  # Date of Exit (optional, can be set to today if not provided)
+        reason = request.data.get("reason")
+
+        if not staff_id or not new_status:
+            return Response(
+                {"error": "Staff ID and status are mandatory."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                staff = Staff.objects.select_for_update().get(id=staff_id)
+
+                staff.reason = reason  # Save the reason provided
+
+                if new_status == "exit":
+                    staff.is_exit = True
+                    staff.is_active = (
+                        False  # Usually, exited staff are no longer active
+                    )
+                    staff.doe = (
+                        doe if doe else date.today()
+                    )  # Set DOE to provided date or today
+                elif new_status == "inactive":
+                    staff.is_active = False
+                    staff.is_exit = False  # Just inactive, not necessarily exited
+                    staff.doe = (
+                        doe if doe else date.today()
+                    )  # Set DOE to provided date or today
+                else:
+                    return Response(
+                        {"error": "Invalid status. Use 'exit' or 'inactive'."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                staff.save()
+
+            return Response(
+                {"message": f"Staff status updated to {new_status} successfully."},
+                status=status.HTTP_200_OK,
+            )
+
+        except Staff.DoesNotExist:
+            return Response(
+                {"error": "Staff member not found."}, status=status.HTTP_404_NOT_FOUND
+            )
 
 
 # ====================================================== qualification view ====================================================
@@ -257,7 +327,9 @@ class SupervisorAdd(CreateAPIView):
 
 
 class SupervisorList(ListAPIView):
-    queryset = Supervisor.objects.all()
+    queryset = Supervisor.objects.filter(
+        is_active=True, staff__is_active=True, staff__is_exit=False
+    ).select_related("staff", "supervise_type")
     serializer_class = SupervisorListSerializer
     pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
     filter_backends = [
@@ -588,7 +660,10 @@ class StaffDepartmentChange(CreateAPIView):
 
 
 class StaffDepartmentList(ListAPIView):
-    queryset = StaffDepartment.objects.all()
+    queryset = StaffDepartment.objects.filter(
+        is_active=True, staff__is_active=True, staff__is_exit=False
+    ).select_related("staff", "branch", "department")
+
     serializer_class = StaffDepartmentSerializer
     pagination_class = api_settings.DEFAULT_PAGINATION_CLASS
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

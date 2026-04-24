@@ -1,0 +1,59 @@
+class PayrollSummary(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+
+        if not payroll_id:
+            return Response({"error": "payroll_id is mandatory"}, status=400)
+
+        salary_prefetch = Prefetch(
+            "staff__staffsalary_set",
+            queryset=StaffSalary.objects.filter(is_active=True).only(
+                "staff_id", "branch_code", "customer_number", "ledger", "sub_ledger"
+            ),
+            to_attr="active_salary",
+        )
+
+        dept_prefetch = Prefetch(
+            "staff__staff_department",
+            queryset=StaffDepartment.objects.filter(is_active=True).only(
+                "staff_id", "branch_id", "department_id", "position_id"
+            ),
+            to_attr="active_dept",
+        )
+
+        queryset = (
+            StaffPayroll.objects.filter(payroll_id=payroll_id)
+            .select_related("staff")
+            .prefetch_related(salary_prefetch, dept_prefetch)
+        )
+
+        export_data = []
+        for record in queryset:
+            salary = (
+                record.staff.active_salary[0] if record.staff.active_salary else None
+            )
+            dept_info = (
+                record.staff.active_dept[0] if record.staff.active_dept else None
+            )
+
+            supervisor = record.staff.staff.filter(is_active=True).first()
+
+            export_data.append(
+                {
+                    "staff_opf": record.staff.staff_opf,
+                    "full_name": record.staff.full_name,
+                    "net_salary": record.net_salary,
+                    "branch_code": salary.branch_code if salary else None,
+                    "customer_number": salary.customer_number if salary else None,
+                    "ledger": salary.ledger if salary else None,
+                    "sub_ledger": salary.sub_ledger if salary else None,
+                    "branch_id": dept_info.branch_id if dept_info else None,
+                    "department_id": dept_info.department_id if dept_info else None,
+                    "position_id": dept_info.position_id if dept_info else None,
+                    "supervise_type_id": (
+                        supervisor.supervise_type_id if supervisor else None
+                    ),
+                }
+            )
+
+        return Response({"results": export_data})

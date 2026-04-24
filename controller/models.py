@@ -48,6 +48,9 @@ class Staff(Person):
         DictionaryItem, on_delete=models.RESTRICT, related_name="title", null=True
     )
     is_active = models.BooleanField(default=True)
+    is_exit = models.BooleanField(default=False)
+    reason = NameField(max_length=512, blank=True, null=True)
+    doe = models.DateField(null=True)
 
 
 class StaffQualification(models.Model):

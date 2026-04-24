@@ -293,8 +293,6 @@ class PayrollFormula(models.Model):
 
 
 # ============================================= monthly deduction ==============================================================
-
-
 class Payroll(models.Model):
     code = NameField(max_length=50, blank=True, null=True)
     total_staff = models.PositiveIntegerField(default=0)
@@ -320,6 +318,7 @@ class Payroll(models.Model):
 class StaffPayroll(models.Model):
     payroll = models.ForeignKey(Payroll, on_delete=models.RESTRICT)
     staff = models.ForeignKey(Staff, on_delete=models.RESTRICT)
+    branch = models.ForeignKey(StaffDepartment, on_delete=models.RESTRICT)
     basic_salary = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
     total_allowance = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
     total_deduction = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
@@ -339,6 +338,43 @@ class StaffPayroll(models.Model):
         unique_together = ("staff", "month", "year")
         verbose_name = "Staff Payroll"
         verbose_name_plural = "Staff Payrolls"
+
+
+class StaffPayrollAllowance(models.Model):
+    staff = models.ForeignKey(Staff, on_delete=models.RESTRICT)
+    payroll = models.ForeignKey(Payroll, on_delete=models.RESTRICT)
+    allowance = models.ForeignKey(Allowance, on_delete=models.RESTRICT)
+    date = models.DateField(null=True, blank=True)
+    amount = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
+    recorded_by = models.PositiveIntegerField(null=False)
+    recorded_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return f"{self.staff.full_name} - {self.allowance.name}"
+
+    class Meta:
+        verbose_name = "Staff Payroll Allowance"
+        verbose_name_plural = "Staff Payroll Allowances"
+
+
+class StaffPayrollDeduction(models.Model):
+    staff = models.ForeignKey(Staff, on_delete=models.RESTRICT)
+    payroll = models.ForeignKey(Payroll, on_delete=models.RESTRICT)
+    deduction = models.ForeignKey(Deduction, on_delete=models.RESTRICT)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.RESTRICT, null=True, blank=True
+    )
+    date = models.DateField(null=True, blank=True)
+    amount = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
+    recorded_by = models.PositiveIntegerField(null=False)
+    recorded_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return f"{self.staff.full_name} - {self.deduction.name}"
+
+    class Meta:
+        verbose_name = "Staff Payroll Deduction"
+        verbose_name_plural = "Staff Payroll Deductions"
 
 
 class PayrollVariable(models.Model):

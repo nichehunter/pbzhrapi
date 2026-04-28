@@ -60,6 +60,8 @@ urlpatterns = [
     path("payroll/list", StaffPayrollList.as_view()),
     path("staff-payroll/list", StaffPayrollList.as_view()),
     path("staff-payroll/data", StaffPayrollData.as_view()),
+    path("payroll-staff-allowance", StaffPayrollAllowanceListView.as_view()),
+    path("payroll-staff-deduction", StaffPayrollDeductionListView.as_view()),
     path("bot-employee", GenerateEmployeeData.as_view()),
     path("staff-kpi", StaffKPIRegister.as_view()),
     path("kpi/list", KPIList.as_view()),

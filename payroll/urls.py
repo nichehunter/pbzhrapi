@@ -79,4 +79,6 @@ urlpatterns = [
         "payroll-contribution-deduction-summary",
         PayrollContributionDeductionSummary.as_view(),
     ),
+    path("payroll-staff-allowance", StaffPayrollAllowanceListView.as_view()),
+    path("payroll-staff-deduction", StaffPayrollDeductionListView.as_view()),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

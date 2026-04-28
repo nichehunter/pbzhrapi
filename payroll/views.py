@@ -1207,7 +1207,7 @@ class ProcessPayroll(APIView):
                         staff_id=sid,
                         payroll=payroll_header,
                         allowance_id=alw["allowance_id"],
-                        date=ded.get("date"),
+                        date=alw.get("date"),
                         amount=alw["amount"],
                         recorded_by=recorded_by,
                     )
@@ -2393,3 +2393,52 @@ class PayrollContributionDeductionSummary(APIView):
         }
 
         return Response(results)
+
+
+class StaffPayrollAllowanceListView(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+        staff_id = request.query_params.get("staff_id")
+
+        queryset = StaffPayrollAllowance.objects.filter(
+            payroll_id=payroll_id, staff_id=staff_id
+        ).select_related("allowance")
+
+        data = [
+            {
+                "id": item.id,
+                "allowance_name": item.allowance.name,
+                "date": item.date,
+                "amount": float(item.amount),
+                "recorded_at": item.recorded_at,
+            }
+            for item in queryset
+        ]
+
+        return Response(data)
+
+
+class StaffPayrollDeductionListView(APIView):
+    def get(self, request):
+        payroll_id = request.query_params.get("payroll_id")
+        staff_id = request.query_params.get("staff_id")
+
+        queryset = StaffPayrollDeduction.objects.filter(
+            payroll_id=payroll_id, staff_id=staff_id
+        ).select_related("deduction", "organization")
+
+        data = [
+            {
+                "id": item.id,
+                "deduction_name": (
+                    item.organization.name if item.organization else item.deduction.name
+                ),
+                "organization": item.organization.name if item.organization else "N/A",
+                "date": item.date,
+                "amount": float(item.amount),
+                "recorded_at": item.recorded_at,
+            }
+            for item in queryset
+        ]
+
+        return Response(data)

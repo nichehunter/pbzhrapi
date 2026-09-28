@@ -9,6 +9,7 @@ urlpatterns = [
     path("calculation-day", CalculationDayAdd.as_view()),
     path("calculation-day/list", CalculationDayList.as_view()),
     path("salary", StaffSalaryAdd.as_view()),
+    path("salary/change", BulkUpdateStaffSalaryAPIView.as_view()),
     path("salary/status", ChangeStaffSalaryStatus.as_view()),
     path("salary/update/<int:pk>", StaffSalaryUpdate.as_view()),
     path("salary/list", StaffSalaryList.as_view()),
@@ -81,4 +82,18 @@ urlpatterns = [
     ),
     path("payroll-staff-allowance", StaffPayrollAllowanceListView.as_view()),
     path("payroll-staff-deduction", StaffPayrollDeductionListView.as_view()),
+    path(
+        "payroll-organization-deduction-summary",
+        StaffOrganizationPayrollDeductionAPIView.as_view(),
+    ),
+    path(
+        "payroll-security-deduction-summary",
+        StaffSecurityFundPayrollDeductionAPIView.as_view(),
+    ),
+    path("payroll-data-allowance", DynamicAllowanceDownloadView.as_view()),
+    path("payroll-data-deduction", DynamicDeductionDownloadView.as_view()),
+    path(
+        "payroll-deduction-excel/<int:organization_id>",
+        DownloadOrganizationDeductionExcelAPIView.as_view(),
+    ),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

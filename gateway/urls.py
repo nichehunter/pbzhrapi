@@ -6,6 +6,7 @@ from controller.views import *
 from leave.views import *
 from gateway.views import *
 from payroll.views import *
+from kpi.gateway import *
 
 # -----------------------------------urls---------------------------------------------
 
@@ -67,4 +68,20 @@ urlpatterns = [
     path("kpi/list", KPIList.as_view()),
     path("kpi-active/<int:pk>", KPIActiveDetails.as_view()),
     path("kpi-notactive", KPINotActiveDetails.as_view()),
+    path("staff/kpi/list", StaffKPIPeriodList.as_view()),
+    path("staff/kpi/item/<int:pk>", StaffKPIFormStructureView.as_view()),
+    path("staff/kpi/create/<int:pk>", CreateStaffKPIItemsView.as_view()),
+    path("staff/kpi/submit/<int:pk>", SubmitStaffKPIView.as_view()),
+    path(
+        "supervisor/kpi/assignment/<int:supervisor>",
+        SupervisorKPIPeriodsListView.as_view(),
+    ),
+    path(
+        "supervisor/kpi/approve",
+        ApproveStaffKPIPeriodView.as_view(),
+    ),
+    path(
+        "supervisor/kpi/reject",
+        RejectStaffKPIPeriodView.as_view(),
+    ),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

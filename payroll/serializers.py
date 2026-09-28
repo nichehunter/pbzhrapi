@@ -6,334 +6,391 @@ from controller.models import Staff, SecurityFund
 from dictionary.models import DictionaryItem
 
 
-#================================================ export ===============================================
+# ================================================ export ===============================================
 class DictionaryItemSerializerExport(serializers.ModelSerializer):
     class Meta:
         model = DictionaryItem
-        fields = ('id','dictionary_item_name')
-        read_only_fields = ('id',)
+        fields = ("id", "dictionary_item_name")
+        read_only_fields = ("id",)
+
 
 class StaffExportSerializer(serializers.ModelSerializer):
     gender = DictionaryItemSerializerExport(read_only=True)
+
     class Meta:
         model = Staff
-        fields = ('id','staff_opf','code','full_name','phone_number','address','gender')
-        read_only_fields = ('id',)
+        fields = (
+            "id",
+            "staff_opf",
+            "code",
+            "full_name",
+            "phone_number",
+            "address",
+            "gender",
+        )
+        read_only_fields = ("id",)
 
 
 class AllowanceExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Allowance
-        fields = ('id','name','is_active')
-        read_only_fields = ('id',)
+        fields = ("id", "name", "is_active")
+        read_only_fields = ("id",)
+
 
 class DeductionExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Deduction
-        fields = ('id','name','is_active')
-        read_only_fields = ('id',)
+        fields = ("id", "name", "is_active")
+        read_only_fields = ("id",)
+
 
 class OrganizationExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ('id','name','account')
-        read_only_fields = ('id',)
+        fields = ("id", "name", "account")
+        read_only_fields = ("id",)
 
 
-#================================================ formula ===============================================
+# ================================================ formula ===============================================
 class CalculationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CalculationDay
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
-#================================================ salary ===============================================
+# ================================================ salary ===============================================
 class SalarySerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffSalary
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class SalaryListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
+
     class Meta:
         model = StaffSalary
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class SalaryUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffSalary
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ allowance ===============================================
+class StaffSalaryUpdateSerializer(serializers.Serializer):
+    opf = serializers.IntegerField(required=True)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+    recorder = serializers.IntegerField(required=True)
+
+
+# ================================================ allowance ===============================================
 class AllowanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Allowance
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class AllowanceUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Allowance
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ deduction ===============================================
+# ================================================ deduction ===============================================
 class DeductionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Deduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class DeductionUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Deduction
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ staff allowance ===============================================
+# ================================================ staff allowance ===============================================
 class StaffAllowanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffAllowance
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffAllowanceListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     allowance = AllowanceExportSerializer(read_only=True)
+
     class Meta:
         model = StaffAllowance
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffAllowanceUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffAllowance
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ staff deduction ===============================================
+# ================================================ staff deduction ===============================================
 class StaffDeductionSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffDeduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffDeductionListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     deduction = DeductionExportSerializer(read_only=True)
+
     class Meta:
         model = StaffDeduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffDeductionUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffDeduction
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ staff deduction ===============================================
+# ================================================ staff deduction ===============================================
 class PayeeDeductionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayeeDeduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class PayeeDeductionListSerializer(serializers.ModelSerializer):
     deduction = DeductionExportSerializer(read_only=True)
+
     class Meta:
         model = PayeeDeduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class PayeeDeductionUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayeeDeduction
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ staff deduction ===============================================
+# ================================================ staff deduction ===============================================
 class SecurityFundSerializer(serializers.ModelSerializer):
     class Meta:
         model = SecurityFund
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class SecurityFundUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SecurityFund
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
-#================================================ monthly allowance ===============================================
+
+# ================================================ monthly allowance ===============================================
 class MonthlyAllowanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonthlyAllowance
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class MonthlyAllowanceListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     allowance = AllowanceExportSerializer(read_only=True)
+
     class Meta:
         model = MonthlyAllowance
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class MonthlyAllowanceUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonthlyAllowance
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ monthly deduction ===============================================
+# ================================================ monthly deduction ===============================================
 class MonthlyDeductionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonthlyDeduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class MonthlyDeductionListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     deduction = DeductionExportSerializer(read_only=True)
     organization = OrganizationExportSerializer(read_only=True)
+
     class Meta:
         model = MonthlyDeduction
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class MonthlyDeductionUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonthlyDeduction
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-
-#================================================ payroll ===============================================
+# ================================================ payroll ===============================================
 class PayrollSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payroll
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class PayrollUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payroll
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ payroll ===============================================
+# ================================================ payroll ===============================================
 class StaffPayrollSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffPayroll
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffPayrollAddSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffPayroll
         fields = [
-            'staff', 'basic_salary', 'total_allowance', 'total_deduction', 
-            'payee', 'security_fund', 'helth_fund', 'net_salary', 'month', 'year'
+            "staff",
+            "basic_salary",
+            "total_allowance",
+            "total_deduction",
+            "payee",
+            "security_fund",
+            "helth_fund",
+            "net_salary",
+            "month",
+            "year",
         ]
+
 
 class StaffPayrollListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     payroll = PayrollSerializer(read_only=True)
+
     class Meta:
         model = StaffPayroll
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffPayrollUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffPayroll
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
-#================================================ allowance ===============================================
+
+# ================================================ allowance ===============================================
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class OrganizationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ allowance ===============================================
+# ================================================ allowance ===============================================
 class StaffOrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffOrganization
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffOrganizationListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
     organization = OrganizationExportSerializer(read_only=True)
+
     class Meta:
         model = StaffOrganization
-        fields = ('__all__')
-        read_only_fields = ('id',)
-
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffOrganizationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffOrganization
-        fields = ('__all__')
-        read_only_fields = ('id','recorded_by')
+        fields = "__all__"
+        read_only_fields = ("id", "recorded_by")
 
 
-#================================================ formula ===============================================
+# ================================================ formula ===============================================
 class PayrollFormulaSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayrollFormula
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class PayrollVariableSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayrollVariable
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
+# ================================================ function ===============================================
+class StaffPayrollDeductionSerializer(serializers.Serializer):
+    opf = serializers.IntegerField()
+    name = serializers.CharField()
+    salary = serializers.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class StaffSecurityFundSerializer(serializers.Serializer):
+    opf = serializers.IntegerField()
+    name = serializers.CharField()
+    account = serializers.CharField()
+    salary = serializers.DecimalField(max_digits=12, decimal_places=2)
+    amount_employee = serializers.DecimalField(  # 7% for all funds
+        max_digits=12, decimal_places=2
+    )
+    amount_employer = serializers.DecimalField(  # 14% (Fund 1) or 13% (Others)
+        max_digits=12, decimal_places=2
+    )
+    total_amount = serializers.DecimalField(  # 21% (Fund 1) or 20% (Others)
+        max_digits=12, decimal_places=2
+    )

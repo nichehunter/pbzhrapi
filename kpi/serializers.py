@@ -6,97 +6,108 @@ from dictionary.models import DictionaryItem
 from kpi.models import *
 
 
-#================================================ export ===============================================
+# ================================================ export ===============================================
 class DictionaryItemSerializerExport(serializers.ModelSerializer):
     class Meta:
         model = DictionaryItem
-        fields = ('id','dictionary_item_name')
-        read_only_fields = ('id',)
+        fields = ("id", "dictionary_item_name")
+        read_only_fields = ("id",)
+
 
 class BranchExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
-        fields = ('id','branch_code','branch_name')
-        read_only_fields = ('id',)
+        fields = ("id", "branch_code", "branch_name")
+        read_only_fields = ("id",)
+
 
 class DepartmentExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
-        fields = ('id','department_code','department_name')
-        read_only_fields = ('id',)
+        fields = ("id", "department_code", "department_name")
+        read_only_fields = ("id",)
 
 
 class StaffExportSerializer(serializers.ModelSerializer):
     gender = DictionaryItemSerializerExport(read_only=True)
+
     class Meta:
         model = Staff
-        fields = ('id','staff_opf','staff_cpf','full_name','gender','phone_number')
-        read_only_fields = ('id',)
+        fields = ("id", "staff_opf", "staff_cpf", "full_name", "gender", "phone_number")
+        read_only_fields = ("id",)
 
 
 class KPISectionExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
-        fields = ('id','code')
-        read_only_fields = ('id',)
+        fields = ("id", "code")
+        read_only_fields = ("id",)
+
 
 class KPIResultExportSerializer(serializers.ModelSerializer):
     class Meta:
         model = KeyResult
-        fields = ('id','name')
-        read_only_fields = ('id',)
-#================================================ kpi ===============================================
+        fields = ("id", "name")
+        read_only_fields = ("id",)
+
+
+# ================================================ kpi ===============================================
 class KPISerializer(serializers.ModelSerializer):
     class Meta:
         model = Kpi
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class KPIListSerializer(serializers.ModelSerializer):
     department = DepartmentExportSerializer(read_only=True)
     branch = BranchExportSerializer(read_only=True)
     level = DictionaryItemSerializerExport(read_only=True)
+
     class Meta:
         model = Kpi
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
 class StaffKPIListSerializer(serializers.ModelSerializer):
     staff = StaffExportSerializer(read_only=True)
+
     class Meta:
         model = StaffKPI
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
-#================================================ kpi ===============================================
+
+# ================================================ kpi ===============================================
 class KPISectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
-#================================================ kpi ===============================================
+# ================================================ kpi ===============================================
 class KPIResultSerializer(serializers.ModelSerializer):
     section = KPISectionExportSerializer(read_only=True)
+
     class Meta:
         model = KeyResult
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
-#================================================ kpi ===============================================
+# ================================================ kpi ===============================================
 class KPIPerfomanceSerializer(serializers.ModelSerializer):
     result = KPIResultExportSerializer(read_only=True)
+
     class Meta:
         model = Performance
-        fields = ('__all__')
-        read_only_fields = ('id',)
+        fields = "__all__"
+        read_only_fields = ("id",)
 
 
-#================================================ kpi done ===============================================
+# ================================================ kpi done ===============================================
 class PerformanceSerializer(serializers.ModelSerializer):
     actual = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
@@ -105,9 +116,17 @@ class PerformanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Performance
         fields = [
-            "id", "performance_measure", "fy_target", "weighting",
-            "is_active", "recorded_by", "recorded_at", "result",
-            "actual", "rating", "weighting_rating"
+            "id",
+            "performance_measure",
+            "fy_target",
+            "weighting",
+            "is_active",
+            "recorded_by",
+            "recorded_at",
+            "result",
+            "actual",
+            "rating",
+            "weighting_rating",
         ]
 
     def get_actual(self, obj):
@@ -138,15 +157,20 @@ class PerformanceSerializer(serializers.ModelSerializer):
             return None  # or 0
 
 
-
 class KeyResultSerializer(serializers.ModelSerializer):
     performance = PerformanceSerializer(many=True, read_only=True)
 
     class Meta:
         model = KeyResult
         fields = [
-            "id", "name", "weighting_percentage", "is_active",
-            "recorded_by", "recorded_at", "section", "performance"
+            "id",
+            "name",
+            "weighting_percentage",
+            "is_active",
+            "recorded_by",
+            "recorded_at",
+            "section",
+            "performance",
         ]
 
 
@@ -156,8 +180,15 @@ class SectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
         fields = [
-            "id", "code", "name", "descriptions", "is_active",
-            "recorded_by", "recorded_at", "kpi", "result"
+            "id",
+            "code",
+            "name",
+            "descriptions",
+            "is_active",
+            "recorded_by",
+            "recorded_at",
+            "kpi",
+            "result",
         ]
 
 
@@ -167,7 +198,110 @@ class StaffKpiSerializer(serializers.ModelSerializer):
     class Meta:
         model = Kpi
         fields = [
-            "id", "code", "name", "descriptions", "is_active", "year",
-            "recorded_by", "recorded_at", "department", "branch", "level",
-            "section"
+            "id",
+            "code",
+            "name",
+            "descriptions",
+            "is_active",
+            "year",
+            "recorded_by",
+            "recorded_at",
+            "department",
+            "branch",
+            "level",
+            "section",
         ]
+
+
+# ===================================================================================
+# KPI Section, Key Result, and Performance Measure Models
+# ===================================================================================
+class KPISectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KPISection
+        fields = "__all__"
+        read_only_fields = ("id",)
+
+
+# ===================================================================================
+# KPI Section, Key Result, and Performance Measure Models
+# ===================================================================================
+class KPIKeyResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KPIKeyResult
+        fields = "__all__"
+        read_only_fields = ("id",)
+
+
+class KPIKeyResultListSerializer(serializers.ModelSerializer):
+    section = serializers.CharField(source="section.title", read_only=True)
+
+    class Meta:
+        model = KPIKeyResult
+        fields = ("id", "title", "section", "department", "is_active")
+        read_only_fields = ("id",)
+
+
+# ===================================================================================
+# KPI Section, Key Result, and Performance Measure Models
+# ===================================================================================
+class KPIPerformanceMeasureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KPIPerformanceMeasure
+        fields = "__all__"
+        read_only_fields = ("id",)
+
+
+class KPIPerformanceMeasureListSerializer(serializers.ModelSerializer):
+    section = serializers.CharField(source="key_result.section.title", read_only=True)
+    department = serializers.CharField(source="key_result.department", read_only=True)
+    result = serializers.CharField(source="key_result.title", read_only=True)
+
+    class Meta:
+        model = KPIPerformanceMeasure
+        fields = (
+            "id",
+            "description",
+            "section",
+            "department",
+            "result",
+            "is_active",
+        )
+        read_only_fields = ("id",)
+
+
+# ===================================================================================
+# KPI window serializers
+# ===================================================================================
+class HRKPIWindowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HRKPIWindow
+        fields = "__all__"
+        read_only_fields = ("id", "code")
+
+
+# ===================================================================================
+# KPI Period serializers
+# ===================================================================================
+class KPIPeriodListSerializer(serializers.ModelSerializer):
+    opf = serializers.CharField(source="staff.staff_opf", read_only=True)
+    full_name = serializers.CharField(source="staff.full_name", read_only=True)
+    supervisor = serializers.CharField(
+        source="station_supervisor.full_name", read_only=True
+    )
+
+    class Meta:
+        model = StaffKPIPeriod
+        fields = ("id", "opf", "full_name", "supervisor", "station_name", "status")
+        read_only_fields = ("id",)
+
+
+class StaffKPIPeriodListSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(source="window.code", read_only=True)
+    title = serializers.CharField(source="window.title", read_only=True)
+    date = serializers.CharField(source="recorded_at", read_only=True)
+
+    class Meta:
+        model = StaffKPIPeriod
+        fields = ("id", "code", "title", "date", "total_score", "status")
+        read_only_fields = ("id",)

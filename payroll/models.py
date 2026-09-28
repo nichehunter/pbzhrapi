@@ -47,7 +47,6 @@ class StaffSalary(models.Model):
         return self.code
 
     class Meta:
-        unique_together = ("staff", "is_active")
         verbose_name = "Staff Salary"
         verbose_name_plural = "Staff Salary"
 

@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models.functions import Coalesce
 from collections import defaultdict
+import openpyxl
 import statistics
 import re
 
@@ -189,6 +190,89 @@ class StaffSalaryAdd(APIView):
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class BulkUpdateStaffSalaryAPIView(APIView):
+
+    def post(self, request, *args, **kwargs):
+        serializer = StaffSalaryUpdateSerializer(data=request.data, many=True)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "status": "ignored",
+                    "detail": "Invalid input payload array format.",
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        items = serializer.validated_data
+
+        print(items)
+
+        # Extract unique OPFs
+        opfs = list({item["opf"] for item in items})
+
+        # Fetch active salaries and map them by staff_opf
+        active_salaries_qs = StaffSalary.objects.filter(
+            staff__staff_opf__in=opfs, is_active=True
+        ).select_related("staff")
+
+        active_salaries = {s.staff.staff_opf: s for s in active_salaries_qs}
+
+        records_to_create = []
+        staff_to_deactivate_ids = []
+
+        for item in items:
+            opf = item["opf"]
+            new_amount = Decimal(str(item["amount"]))
+            recorder = item["recorder"]
+
+            # 1. Skip if OPF does not exist or has no active salary record
+            current_salary = active_salaries.get(opf)
+            if not current_salary:
+                continue
+
+            # 2. Skip if the amount is unchanged
+            if current_salary.amount == new_amount:
+                continue
+
+            staff_to_deactivate_ids.append(current_salary.staff_id)
+
+            # 3. Prepare new record carrying over previous metadata
+            records_to_create.append(
+                StaffSalary(
+                    staff=current_salary.staff,
+                    amount=new_amount,
+                    code=current_salary.code,
+                    account_number=current_salary.account_number,
+                    branch_code=current_salary.branch_code,
+                    customer_number=current_salary.customer_number,
+                    ledger=current_salary.ledger,
+                    sub_ledger=current_salary.sub_ledger,
+                    tin_number=current_salary.tin_number,
+                    is_active=True,
+                    recorded_by=recorder,
+                )
+            )
+
+        # Execute bulk updates and inserts atomically
+        if records_to_create:
+            with transaction.atomic():
+                StaffSalary.objects.filter(
+                    staff_id__in=staff_to_deactivate_ids, is_active=True
+                ).update(is_active=False)
+
+                StaffSalary.objects.bulk_create(records_to_create)
+
+        return Response(
+            {
+                "status": "success",
+                "processed_count": len(records_to_create),
+                "detail": "Bulk salary update completed.",
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class StaffSalaryList(ListAPIView):
@@ -542,6 +626,49 @@ class DeductionDetail(APIView):
         data = Deduction.objects.get(id=pk)
         serializer = DeductionSerializer(data, many=False)
         return JsonResponse(serializer.data, safe=False)
+
+
+class DownloadOrganizationDeductionExcelAPIView(APIView):
+
+    def get(self, request, organization_id, *args, **kwargs):
+
+        # Query active staff linked to the specified organization
+        org_staff_qs = StaffOrganization.objects.filter(
+            organization_id=organization_id, is_active=True
+        ).values_list("staff_id", flat=True)
+
+        if not org_staff_qs.exists():
+            return Response(
+                {"error": "No active staff found for the specified organization."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Retrieve active basic salaries
+        active_salaries = StaffSalary.objects.filter(
+            staff_id__in=org_staff_qs, is_active=True
+        ).select_related("staff")
+
+        # Generate Excel
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "1% Deductions"
+        ws.append(["OPF", "Amount"])
+
+        one_percent = Decimal("0.01")
+        for salary in active_salaries:
+            opf = salary.staff.staff_opf
+            calculated_amount = round(salary.amount * one_percent, 2)
+            ws.append([opf, calculated_amount])
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="Organization_{organization_id}_1percent.xlsx"'
+        )
+
+        wb.save(response)
+        return response
 
 
 # ====================================================== allowance ====================================================
@@ -2442,3 +2569,533 @@ class StaffPayrollDeductionListView(APIView):
         ]
 
         return Response(data)
+
+
+class StaffOrganizationPayrollDeductionAPIView(APIView):
+
+    def get(self, request, *args, **kwargs):
+        payroll_id = request.query_params.get("payroll")
+        organization_id = request.query_params.get("organization")
+
+        if not all([payroll_id, organization_id]):
+            return Response(
+                {
+                    "error": "Missing required query parameters: 'payroll' and 'organization'."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Query StaffPayroll directly to access basic_salary and sum matching deductions
+        staff_deductions = (
+            StaffPayroll.objects.filter(
+                payroll_id=payroll_id,
+                staff__staffpayrolldeduction__organization_id=organization_id,
+                staff__staffpayrolldeduction__payroll_id=payroll_id,
+            )
+            .values(
+                opf=F("staff__staff_opf"),
+                name=F("staff__full_name"),
+                salary=F("basic_salary"),
+            )
+            .annotate(
+                amount=Sum(
+                    "staff__staffpayrolldeduction__amount",
+                    filter=Q(
+                        staff__staffpayrolldeduction__organization_id=organization_id,
+                        staff__staffpayrolldeduction__payroll_id=payroll_id,
+                    ),
+                )
+            )
+            .order_by("opf")
+        )
+
+        serializer = StaffPayrollDeductionSerializer(staff_deductions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class StaffSecurityFundPayrollDeductionAPIView(APIView):
+    """API view to fetch security fund contributions (Employee %, Employer %, Total %)
+
+    per staff member based on payroll and security fund type.
+    """
+
+    def get(self, request, *args, **kwargs):
+        payroll_id = request.query_params.get("payroll")
+        fund_id = request.query_params.get("fund")
+
+        if not all([payroll_id, fund_id]):
+            return Response(
+                {"error": "Missing required query parameters: 'payroll' and 'fund'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            fund_id = int(fund_id)
+        except ValueError:
+            return Response(
+                {"error": "'fund' parameter must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Subquery to retrieve staff's active account for this fund
+        account_subquery = StaffSecurityFund.objects.filter(
+            staff=OuterRef("staff"), fund_id=fund_id, is_active=True
+        ).values("account")[:1]
+
+        # Fetch payroll entries for staff linked to the specified security fund
+        staff_payrolls = (
+            StaffPayroll.objects.filter(
+                payroll_id=payroll_id,
+                staff__staffsecurityfund__fund_id=fund_id,
+                staff__staffsecurityfund__is_active=True,
+            )
+            .annotate(account=Subquery(account_subquery))
+            .values(
+                opf=F("staff__staff_opf"),
+                name=F("staff__full_name"),
+                account=F("account"),
+                salary=F("basic_salary"),
+            )
+            .order_by("opf")
+        )
+
+        # Set contribution rates based on fund_id
+        if fund_id == 1:
+            emp_rate = Decimal("0.07")  # 7%
+            employer_rate = Decimal("0.14")  # 14%
+            total_rate = Decimal("0.21")  # 21%
+        else:
+            emp_rate = Decimal("0.07")  # 7%
+            employer_rate = Decimal("0.13")  # 13%
+            total_rate = Decimal("0.20")  # 20%
+
+        report_data = []
+        for row in staff_payrolls:
+            basic = Decimal(str(row["salary"]))
+            report_data.append(
+                {
+                    "opf": row["opf"],
+                    "name": row["name"],
+                    "account": row["account"] or "N/A",
+                    "salary": basic,
+                    "amount_employee": round(basic * emp_rate, 2),
+                    "amount_employer": round(basic * employer_rate, 2),
+                    "total_amount": round(basic * total_rate, 2),
+                }
+            )
+
+        serializer = StaffSecurityFundSerializer(report_data, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+import io
+import os
+import pandas as pd
+from django.conf import settings
+from django.http import HttpResponse
+from rest_framework import schemas
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+# CoreAPI imports required for rest_framework_swagger
+import coreapi
+import coreschema
+
+
+class DynamicAllowanceDownloadView(APIView):
+    """
+    API view to dynamically find an allowance column inside allowance.csv,
+    filter out empty/zero values, sort by OPF, and return it as a downloadable CSV.
+    """
+
+    # This injects the interactive search field into the rest_framework_swagger UI
+    schema = schemas.AutoSchema(
+        manual_fields=[
+            coreapi.Field(
+                name="allowance_column",
+                required=True,
+                location="query",
+                schema=coreschema.String(
+                    description="Enter a partial keyword for the allowance column (e.g., 'HARDSHIP')"
+                ),
+            )
+        ]
+    )
+
+    def get(self, request, *args, **kwargs):
+        # 1. Fetch and validate the parameter from Swagger
+        target_column = request.query_params.get("allowance_column")
+
+        if not target_column:
+            raise ValidationError(
+                {"error": "The 'allowance_column' parameter is required."}
+            )
+
+        # 2. Locate the file safely inside your project base directory (where manage.py sits)
+        file_name = "allowance.csv"
+        file_path = os.path.join(settings.BASE_DIR, file_name)
+
+        if not os.path.exists(file_path):
+            return Response(
+                {
+                    "error": f"Master file '{file_name}' was not found at {settings.BASE_DIR}."
+                },
+                status=404,
+            )
+
+        try:
+            # 3. DYNAMIC HEADER SCANNER: Find which row actually contains the column titles
+            # Read the file with no headers first to inspect raw structure row-by-row
+            df_raw = pd.read_csv(file_path, header=None)
+
+            header_row_index = None
+            for idx, row in df_raw.iterrows():
+                # Convert all items in this row to clean uppercase strings
+                row_values = [
+                    str(val).strip().upper() for val in row.values if pd.notna(val)
+                ]
+                # Look for the anchor column "OPF"
+                if "OPF" in row_values:
+                    header_row_index = idx
+                    break
+
+            # 4. Read the CSV using the dynamically detected header row position
+            if header_row_index is not None:
+                df = pd.read_csv(file_path, skiprows=header_row_index)
+            else:
+                # Fallback if "OPF" wasn't explicitly found in the first rows
+                df = pd.read_csv(file_path)
+
+            # Clean whitespace off all column headers to avoid tracking issues
+            df.columns = [str(col).strip() for col in df.columns]
+
+            # Find the true casing of the OPF column header
+            id_column_list = [col for col in df.columns if col.upper() == "OPF"]
+            if not id_column_list:
+                raise ValidationError(
+                    {
+                        "error": f"Could not find the 'OPF' anchor column. Current headers parsed: {list(df.columns)}"
+                    }
+                )
+            id_column = id_column_list[0]
+
+            # 5. INCLUSION/PARTIAL MATCHING: Search for the allowance keyword
+            target_clean = target_column.strip().upper()
+            matching_columns = [
+                col for col in df.columns if target_clean in col.upper()
+            ]
+
+            if not matching_columns:
+                raise ValidationError(
+                    {
+                        "error": f"No column found including '{target_column}'. Available choices: {list(df.columns)}"
+                    }
+                )
+
+            # Extract the first matching column name (e.g., "HARDSHIP ALLOWANCE")
+            matched_column = matching_columns[0]
+
+            # 6. Extract and Clean the 2 target columns
+            sub_df = df[[id_column, matched_column]].copy()
+
+            # Force convert columns to numeric values (corrupted strings become NaN)
+            sub_df[id_column] = pd.to_numeric(sub_df[id_column], errors="coerce")
+            sub_df[matched_column] = pd.to_numeric(
+                sub_df[matched_column], errors="coerce"
+            )
+
+            # Drop missing rows (NaN) and filter out zeros
+            sub_df = sub_df.dropna(subset=[id_column, matched_column])
+            sub_df = sub_df[sub_df[matched_column] != 0]
+
+            # Sort ascending by OPF identification number
+            sub_df = sub_df.sort_values(by=id_column).reset_index(drop=True)
+            sub_df[id_column] = sub_df[id_column].astype(int)
+
+            # 7. Generate CSV stream in memory
+            csv_buffer = io.StringIO()
+            sub_df.to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)
+
+            # 8. Return response as a secure downloadable attachment
+            clean_filename = f"opf_with_{matched_column.lower().replace(' ', '_')}.csv"
+            response = HttpResponse(csv_buffer.getvalue(), content_type="text/csv")
+            response["Content-Disposition"] = f'attachment; filename="{clean_filename}"'
+
+            return response
+
+        except ValidationError as ve:
+            # Pass through validation errors cleanly to Swagger
+            return Response(ve.detail, status=400)
+        except Exception as e:
+            # Handle structural system failures
+            return Response(
+                {"error": f"An error occurred processing the file: {str(e)}"},
+                status=500,
+            )
+
+
+# class DynamicAllowanceDownloadView(APIView):
+#     """
+#     API view to dynamically find an allowance column inside allowance.csv,
+#     filter out empty/zero values, sort by OPF, and return it as a downloadable CSV.
+#     """
+
+#     # This injects the interactive search field into the rest_framework_swagger UI
+#     schema = schemas.AutoSchema(
+#         manual_fields=[
+#             coreapi.Field(
+#                 name="allowance_column",
+#                 required=True,
+#                 location="query",
+#                 schema=coreschema.String(
+#                     description="Enter a partial keyword for the allowance column (e.g., 'HARDSHIP')"
+#                 ),
+#             )
+#         ]
+#     )
+
+#     def get(self, request, *args, **kwargs):
+#         # 1. Fetch and validate the parameter from Swagger
+#         target_column = request.query_params.get("allowance_column")
+
+#         if not target_column:
+#             raise ValidationError(
+#                 {"error": "The 'allowance_column' parameter is required."}
+#             )
+
+#         # 2. Locate the file safely inside your project base directory (where manage.py sits)
+#         file_name = "allowance.csv"
+#         file_path = os.path.join(settings.BASE_DIR, file_name)
+
+#         if not os.path.exists(file_path):
+#             return Response(
+#                 {
+#                     "error": f"Master file '{file_name}' was not found at {settings.BASE_DIR}."
+#                 },
+#                 status=404,
+#             )
+
+#         try:
+#             # 3. DYNAMIC HEADER SCANNER: Find which row actually contains the column titles
+#             # Read the file with no headers first to inspect raw structure row-by-row
+#             df_raw = pd.read_csv(file_path, header=None)
+
+#             header_row_index = None
+#             for idx, row in df_raw.iterrows():
+#                 # Convert all items in this row to clean uppercase strings
+#                 row_values = [
+#                     str(val).strip().upper() for val in row.values if pd.notna(val)
+#                 ]
+#                 # Look for the anchor column "OPF"
+#                 if "OPF" in row_values:
+#                     header_row_index = idx
+#                     break
+
+#             # 4. Read the CSV using the dynamically detected header row position
+#             if header_row_index is not None:
+#                 df = pd.read_csv(file_path, skiprows=header_row_index)
+#             else:
+#                 # Fallback if "OPF" wasn't explicitly found in the first rows
+#                 df = pd.read_csv(file_path)
+
+#             # Clean whitespace off all column headers to avoid tracking issues
+#             df.columns = [str(col).strip() for col in df.columns]
+
+#             # Find the true casing of the OPF column header
+#             id_column_list = [col for col in df.columns if col.upper() == "OPF"]
+#             if not id_column_list:
+#                 raise ValidationError(
+#                     {
+#                         "error": f"Could not find the 'OPF' anchor column. Current headers parsed: {list(df.columns)}"
+#                     }
+#                 )
+#             id_column = id_column_list[0]
+
+#             # 5. INCLUSION/PARTIAL MATCHING: Search for the allowance keyword
+#             target_clean = target_column.strip().upper()
+#             matching_columns = [
+#                 col for col in df.columns if target_clean in col.upper()
+#             ]
+
+#             if not matching_columns:
+#                 raise ValidationError(
+#                     {
+#                         "error": f"No column found including '{target_column}'. Available choices: {list(df.columns)}"
+#                     }
+#                 )
+
+#             # Extract the first matching column name (e.g., "HARDSHIP ALLOWANCE")
+#             matched_column = matching_columns[0]
+
+#             # 6. Extract and Clean the 2 target columns
+#             sub_df = df[[id_column, matched_column]].copy()
+
+#             # Force convert columns to numeric values (corrupted strings become NaN)
+#             sub_df[id_column] = pd.to_numeric(sub_df[id_column], errors="coerce")
+#             sub_df[matched_column] = pd.to_numeric(
+#                 sub_df[matched_column], errors="coerce"
+#             )
+
+#             # Drop missing rows (NaN) and filter out zeros
+#             sub_df = sub_df.dropna(subset=[id_column, matched_column])
+#             sub_df = sub_df[sub_df[matched_column] != 0]
+
+#             # Sort ascending by OPF identification number
+#             sub_df = sub_df.sort_values(by=id_column).reset_index(drop=True)
+#             sub_df[id_column] = sub_df[id_column].astype(int)
+
+#             # 7. Generate CSV stream in memory
+#             csv_buffer = io.StringIO()
+#             sub_df.to_csv(csv_buffer, index=False)
+#             csv_buffer.seek(0)
+
+#             # 8. Return response as a secure downloadable attachment
+#             clean_filename = f"opf_with_{matched_column.lower().replace(' ', '_')}.csv"
+#             response = HttpResponse(csv_buffer.getvalue(), content_type="text/csv")
+#             response["Content-Disposition"] = f'attachment; filename="{clean_filename}"'
+
+#             return response
+
+#         except ValidationError as ve:
+#             # Pass through validation errors cleanly to Swagger
+#             return Response(ve.detail, status=400)
+#         except Exception as e:
+#             # Handle structural system failures
+#             return Response(
+#                 {"error": f"An error occurred processing the file: {str(e)}"},
+#                 status=500,
+#             )
+
+
+class DynamicDeductionDownloadView(APIView):
+    """
+    API view to dynamically find a deduction column inside the master file,
+    filter out empty/zero values, sort by OPF, rename columns to 'OPF' and 'amount',
+    and return it as a downloadable CSV named after the deduction type.
+    """
+
+    # Injects the interactive search field into the rest_framework_swagger UI
+    schema = schemas.AutoSchema(
+        manual_fields=[
+            coreapi.Field(
+                name="deduction_column",
+                required=True,
+                location="query",
+                schema=coreschema.String(
+                    description="Enter a partial keyword for the deduction column (e.g., 'TAX', 'INSURANCE')"
+                ),
+            )
+        ]
+    )
+
+    def get(self, request, *args, **kwargs):
+        # 1. Fetch and validate the parameter from Swagger
+        target_column = request.query_params.get("deduction_column")
+
+        if not target_column:
+            raise ValidationError(
+                {"error": "The 'deduction_column' parameter is required."}
+            )
+
+        # 2. Locate the file safely inside your project base directory (where manage.py sits)
+        # Note: If your deductions are kept in a separate file (e.g., "deductions.csv"), change this string.
+        file_name = "deduction.csv"
+        file_path = os.path.join(settings.BASE_DIR, file_name)
+
+        if not os.path.exists(file_path):
+            return Response(
+                {
+                    "error": f"Master file '{file_name}' was not found at {settings.BASE_DIR}."
+                },
+                status=404,
+            )
+
+        try:
+            # 3. DYNAMIC HEADER SCANNER: Find which row actually contains the column titles
+            df_raw = pd.read_csv(file_path, header=None)
+
+            header_row_index = None
+            for idx, row in df_raw.iterrows():
+                row_values = [
+                    str(val).strip().upper() for val in row.values if pd.notna(val)
+                ]
+                if "OPF" in row_values:
+                    header_row_index = idx
+                    break
+
+            # 4. Read the CSV using the dynamically detected header row position
+            if header_row_index is not None:
+                df = pd.read_csv(file_path, skiprows=header_row_index)
+            else:
+                df = pd.read_csv(file_path)
+
+            # Clean whitespace off all column headers
+            df.columns = [str(col).strip() for col in df.columns]
+
+            # Find the true casing of the OPF column header
+            id_column_list = [col for col in df.columns if col.upper() == "OPF"]
+            if not id_column_list:
+                raise ValidationError(
+                    {
+                        "error": f"Could not find the 'OPF' anchor column. Current headers parsed: {list(df.columns)}"
+                    }
+                )
+            id_column = id_column_list[0]
+
+            # 5. INCLUSION/PARTIAL MATCHING: Search for the deduction keyword
+            target_clean = target_column.strip().upper()
+            matching_columns = [
+                col for col in df.columns if target_clean in col.upper()
+            ]
+
+            if not matching_columns:
+                raise ValidationError(
+                    {
+                        "error": f"No column found including '{target_column}'. Available choices: {list(df.columns)}"
+                    }
+                )
+
+            # Extract the first matching column name (e.g., "TAX DEDUCTION")
+            matched_column = matching_columns[0]
+
+            # 6. Extract and Clean the 2 target columns
+            sub_df = df[[id_column, matched_column]].copy()
+
+            # Force convert columns to numeric values
+            sub_df[id_column] = pd.to_numeric(sub_df[id_column], errors="coerce")
+            sub_df[matched_column] = pd.to_numeric(
+                sub_df[matched_column], errors="coerce"
+            )
+
+            # Drop missing rows (NaN) and filter out zeros
+            sub_df = sub_df.dropna(subset=[id_column, matched_column])
+            sub_df = sub_df[sub_df[matched_column] != 0]
+
+            # Sort ascending by OPF identification number
+            sub_df = sub_df.sort_values(by=id_column).reset_index(drop=True)
+            sub_df[id_column] = sub_df[id_column].astype(int)
+
+            # 7. RENAME headers explicitly to 'OPF' and 'amount' inside the CSV file output
+            sub_df = sub_df.rename(columns={id_column: "OPF", matched_column: "amount"})
+
+            # 8. Generate CSV stream in memory
+            csv_buffer = io.StringIO()
+            sub_df.to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)
+
+            # 9. Return response as a secure downloadable attachment (file name matches deduction name)
+            clean_filename = f"opf_with_{matched_column.lower().replace(' ', '_')}.csv"
+            response = HttpResponse(csv_buffer.getvalue(), content_type="text/csv")
+            response["Content-Disposition"] = f'attachment; filename="{clean_filename}"'
+
+            return response
+
+        except ValidationError as ve:
+            return Response(ve.detail, status=400)
+        except Exception as e:
+            return Response(
+                {"error": f"An error occurred processing the file: {str(e)}"},
+                status=500,
+            )

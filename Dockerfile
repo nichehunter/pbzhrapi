@@ -32,14 +32,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zip \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade build tools
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# Replace the build tools upgrade line with:
+RUN pip install --no-cache-dir --upgrade "pip<24.1" "setuptools<70.0.0" wheel
 
 # Install Python requirements
-# Ensure setuptools is in place before and during requirements install
 COPY requirements.txt .
-RUN pip install --no-cache-dir setuptools>=65.0.0 && \
-    pip install --no-cache-dir -r requirements.txt --timeout 6000 --retries 5
+RUN pip install --no-cache-dir -r requirements.txt --timeout 6000 --retries 5
 
 # Copy application files
 COPY ./hrms /hrms

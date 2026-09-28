@@ -96,7 +96,7 @@ APSCHEDULER_DATETIME_FORMAT = "N j, Y, f:s a"  # Default
 SCHEDULER_DEFAULT = True
 
 REST_FRAMEWORK = {
-    # "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.coreapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.coreapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "EXCEPTION_HANDLER": "dictionary.utils.custom_exception_handler",

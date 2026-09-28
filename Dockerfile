@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM python:3.10-slim-bookworm
 
-# Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     CPLUS_INCLUDE_PATH=/usr/include/gdal \
@@ -9,7 +8,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /hrms
 
-# Install system dependencies including GIS and build requirements
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -32,14 +30,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zip \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade build tools
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# Upgrade build tools AND force-install setuptools into the runtime environment
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=65.0.0" wheel
 
-# Install Python requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt --timeout 6000 --retries 5
 
-# Copy application files
 COPY ./hrms /hrms
 
 EXPOSE 5051

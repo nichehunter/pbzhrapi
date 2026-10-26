@@ -15,6 +15,11 @@ urlpatterns = [
     path("staff/update/<int:pk>", StaffUpdate.as_view()),
     path("staff/details/<int:pk>", StaffDetails.as_view()),
     path("staff/data/<int:pk>", StaffData.as_view()),
+    path(
+        "staff/salary/<int:opf>",
+        StaffLastNetSalaryAPIView.as_view(),
+        name="staff_last_net_salary",
+    ),
     path("staff/list", StaffList.as_view()),
     path("staff/branch/details", StaffBranchDetails.as_view()),
     path("staff-qualification/list", StaffQualificationList.as_view()),

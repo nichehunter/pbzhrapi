@@ -39,6 +39,7 @@ class StaffSalary(models.Model):
     ledger = NameField(max_length=150, blank=True, null=True)
     sub_ledger = NameField(max_length=150, blank=True, null=True)
     tin_number = NameField(max_length=150, blank=True, null=True)
+    payroll_number = NameField(max_length=150, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     recorded_by = models.PositiveIntegerField(null=False)
     recorded_at = models.DateTimeField(auto_now_add=True, null=True)

@@ -36,6 +36,27 @@ from kpi.models import *
 
 
 # ====================================================== staff====================================================
+class StaffProfileAPIView(APIView):
+    serializer_class = StaffProfileSerializer
+
+    def get(self, request, pk):
+        # Optimize query with select_related and prefetch_related to prevent N+1 hits
+        staff = (
+            Staff.objects.select_related("gender", "job_title", "employment_status")
+            .prefetch_related(
+                "staffsalary_set",
+                Prefetch(
+                    "staffsecurityfund_set",
+                    queryset=StaffSecurityFund.objects.select_related("fund"),
+                ),
+            )
+            .get(id=pk)
+        )
+
+        serializer = StaffProfileSerializer(staff, many=False)
+        return JsonResponse(serializer.data, safe=False)
+
+
 class StaffData(APIView):
 
     serializer_class = StaffDataSerializer

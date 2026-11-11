@@ -14,6 +14,7 @@ urlpatterns = [
     path("dictionary/item/parent", FilterDictionaryItemParent.as_view()),
     path("staff/update/<int:pk>", StaffUpdate.as_view()),
     path("staff/details/<int:pk>", StaffDetails.as_view()),
+    path("staff/profile/<int:pk>", StaffProfileAPIView.as_view()),
     path("staff/data/<int:pk>", StaffData.as_view()),
     path(
         "staff/salary/<int:opf>",

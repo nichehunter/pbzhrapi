@@ -96,4 +96,8 @@ urlpatterns = [
         "payroll-deduction-excel/<int:organization_id>",
         DownloadOrganizationDeductionExcelAPIView.as_view(),
     ),
+    # Monthly Extra Allowance API endpoint
+    path("monthly-extra-allowance", MonthlyExtraAllowanceAdd.as_view()),
+    path("monthly-extra-allowance/list", MonthlyExtraAllowanceListAPIView.as_view()),
+    path("monthly-extra-allowance/delete", MonthlyExtraAllowanceDelete.as_view())
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

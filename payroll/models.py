@@ -248,6 +248,7 @@ class MonthlyAllowance(models.Model):
         verbose_name_plural = "Monthly Allowances"
 
 
+
 # ============================================= monthly deduction ==============================================================
 class MonthlyDeduction(models.Model):
     staff = models.ForeignKey(Staff, on_delete=models.RESTRICT)
@@ -387,3 +388,22 @@ class PayrollVariable(models.Model):
     class Meta:
         verbose_name = "Formula variable"
         verbose_name_plural = "Formula variables"
+
+
+class MonthlyExtraAllowance(models.Model):
+    staff = models.ForeignKey(Staff, on_delete=models.RESTRICT)
+    allowance = models.ForeignKey(Allowance, on_delete=models.RESTRICT)
+    payroll = models.ForeignKey(Payroll, on_delete=models.RESTRICT)
+    amount = models.DecimalField(max_digits=1000, decimal_places=2, default=0)
+    date = models.DateField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+    recorded_by = models.PositiveIntegerField(null=False)
+    recorded_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.staff.full_name
+
+    class Meta:
+        unique_together = ("staff", "date", "allowance")
+        verbose_name = "Monthly Extra Allowance"
+        verbose_name_plural = "Monthly Extra Allowances"

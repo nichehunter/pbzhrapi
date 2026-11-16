@@ -234,6 +234,12 @@ class MonthlyAllowanceUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "recorded_by")
 
 
+class MonthlyExtraAllowanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MonthlyExtraAllowance
+        fields = "__all__"
+        read_only_fields = ("id",)
+
 # ================================================ monthly deduction ===============================================
 class MonthlyDeductionSerializer(serializers.ModelSerializer):
     class Meta:

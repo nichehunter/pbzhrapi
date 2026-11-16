@@ -61,6 +61,7 @@ urlpatterns = [
     path("salary/list", StaffSalaryList.as_view()),
     path("allowance/list", StaffAllowanceList.as_view()),
     path("monthly-allowance/list", MonthlyAllowanceList.as_view()),
+    path("monthly-extra-allowance/list", MonthlyExtraAllowanceListAPIView.as_view()),
     path("deduction/list", StaffDeductionList.as_view()),
     path("monthly-deduction/list", MonthlyDeductionList.as_view()),
     path("organization/list", StaffOrganizationList.as_view()),

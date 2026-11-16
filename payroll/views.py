@@ -3099,3 +3099,82 @@ class DynamicDeductionDownloadView(APIView):
                 {"error": f"An error occurred processing the file: {str(e)}"},
                 status=500,
             )
+
+#==========================================================================
+# function for monthly extra allowance
+#==========================================================================
+class MonthlyExtraAllowanceAdd(CreateAPIView):
+
+    serializer_class = MonthlyExtraAllowanceSerializer
+
+    def post(self, request):
+        serializer = MonthlyExtraAllowanceSerializer(data=request.data, many=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    
+class MonthlyExtraAllowanceListAPIView(APIView):
+    """
+    API View to retrieve MonthlyExtraAllowance records filtered by 
+    payroll_id, staff_id, and/or allowance_id.
+    """
+    def get(self, request, *args, **kwargs):
+        # Extract query parameters from request.GET
+        payroll_id = request.query_params.get('payroll_id')
+        staff_id = request.query_params.get('staff_id')
+        allowance_id = request.query_params.get('allowance_id')
+
+        # Base queryset
+        qs = MonthlyExtraAllowance.objects.all().order_by('staff__staff_opf')
+
+        # Apply filters conditionally if they are provided
+        if payroll_id is not None:
+            qs = qs.filter(payroll_id=payroll_id)
+        if staff_id is not None:
+            qs = qs.filter(staff_id=staff_id)
+        if allowance_id is not None:
+            qs = qs.filter(allowance_id=allowance_id)
+
+        # Structure the data using values() and F() expressions for high performance
+        data = list(qs.values(
+            'id',
+            'amount',
+            'date',
+            'is_active',
+            'payroll_id',
+            'staff_id',
+            'allowance_id',
+            staff_opf=F('staff__staff_opf'), 
+            staff_code=F('staff__code'), 
+            staff_name=F('staff__full_name'),
+            staff_phone=F('staff__phone_number'),
+            allowance_name=F('allowance__name')  # Replace 'name' if your Allowance model field differs (e.g. 'title')
+        ))
+
+        return Response({
+            "status": "success",
+            "count": len(data),
+            "results": data
+        }, status=status.HTTP_200_OK)
+
+
+class MonthlyExtraAllowanceDelete(APIView):
+    def delete(self, request, *args, **kwargs):
+        ids = request.data.get("ids", [])
+
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"detail": "A non-empty list of IDs is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        deleted_count, _ = MonthlyExtraAllowance.objects.filter(
+            id__in=ids, is_active=True
+        ).delete()
+
+        return Response(
+            {"detail": f"{deleted_count} record(s) deleted."},
+            status=status.HTTP_204_NO_CONTENT,
+        )
